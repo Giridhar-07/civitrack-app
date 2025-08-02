@@ -53,31 +53,18 @@ Flag.init(
         notEmpty: true,
       },
     },
-    flaggedBy: {
+    userId: {
       type: DataTypes.UUID,
       allowNull: false,
       references: {
         model: 'users',
         key: 'id',
       },
-    },
-    flaggedAt: {
-      type: DataTypes.DATE,
-      allowNull: false,
-      defaultValue: DataTypes.NOW,
     },
     resolved: {
       type: DataTypes.BOOLEAN,
       allowNull: false,
       defaultValue: false,
-    },
-    resolvedBy: {
-      type: DataTypes.UUID,
-      allowNull: true,
-      references: {
-        model: 'users',
-        key: 'id',
-      },
     },
     resolvedAt: {
       type: DataTypes.DATE,
@@ -102,9 +89,6 @@ Flag.init(
   }
 );
 
-// Define associations
-Flag.belongsTo(Issue, { foreignKey: 'issueId', as: 'issue' });
-Flag.belongsTo(User, { foreignKey: 'flaggedBy', as: 'flagger' });
-Flag.belongsTo(User, { foreignKey: 'resolvedBy', as: 'resolver' });
+// Associations are defined in models/index.ts
 
 export default Flag;
