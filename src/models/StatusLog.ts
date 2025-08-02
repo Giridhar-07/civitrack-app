@@ -8,9 +8,9 @@ import { IssueStatus } from '../types/enums';
 interface StatusLogAttributes {
   id: string;
   issueId: string;
-  status: string;
-  changedBy: string;
-  changedAt: Date;
+  userId: string;
+  oldStatus: string | null;
+  newStatus: string;
   comment?: string;
   createdAt: Date;
   updatedAt: Date;
@@ -23,9 +23,9 @@ interface StatusLogCreationAttributes extends Optional<StatusLogAttributes, 'id'
 class StatusLog extends Model<StatusLogAttributes, StatusLogCreationAttributes> implements StatusLogAttributes {
   public id!: string;
   public issueId!: string;
-  public status!: string;
-  public changedBy!: string;
-  public changedAt!: Date;
+  public userId!: string;
+  public oldStatus!: string | null;
+  public newStatus!: string;
   public comment?: string;
   public createdAt!: Date;
   public updatedAt!: Date;
@@ -47,7 +47,31 @@ StatusLog.init(
         key: 'id',
       },
     },
-    status: {
+    userId: {
+      type: DataTypes.UUID,
+      allowNull: false,
+      references: {
+        model: 'users',
+        key: 'id',
+      },
+    },
+    oldStatus: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      validate: {
+        isIn: [
+          [
+            IssueStatus.REPORTED,
+            IssueStatus.UNDER_REVIEW,
+            IssueStatus.IN_PROGRESS,
+            IssueStatus.RESOLVED,
+            IssueStatus.CLOSED,
+            null,
+          ],
+        ],
+      },
+    },
+    newStatus: {
       type: DataTypes.STRING,
       allowNull: false,
       validate: {
@@ -61,19 +85,6 @@ StatusLog.init(
           ],
         ],
       },
-    },
-    changedBy: {
-      type: DataTypes.UUID,
-      allowNull: false,
-      references: {
-        model: 'users',
-        key: 'id',
-      },
-    },
-    changedAt: {
-      type: DataTypes.DATE,
-      allowNull: false,
-      defaultValue: DataTypes.NOW,
     },
     comment: {
       type: DataTypes.TEXT,
@@ -98,8 +109,6 @@ StatusLog.init(
   }
 );
 
-// Define associations
-StatusLog.belongsTo(Issue, { foreignKey: 'issueId', as: 'issue' });
-StatusLog.belongsTo(User, { foreignKey: 'changedBy', as: 'user' });
+// Associations are defined in models/index.ts
 
 export default StatusLog;
