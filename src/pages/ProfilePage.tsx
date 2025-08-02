@@ -84,7 +84,7 @@ const ProfilePage: React.FC = () => {
         
         // Get user's issues
         if (currentUser && currentUser.id) {
-          const issues = await issueService.getIssuesByUser(currentUser.id);
+          const issues = await issueService.getIssuesByUser();
           setUserIssues(issues);
         }
       } catch (err) {

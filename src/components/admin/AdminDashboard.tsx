@@ -27,7 +27,8 @@ import {
   Card,
   CardContent,
   Divider,
-  useTheme
+  useTheme,
+  Avatar
 } from '@mui/material';
 import {
   Visibility as VisibilityIcon,
@@ -139,9 +140,9 @@ const AdminDashboard: React.FC = () => {
       // In a real app, you would have an admin service to get users
       // For demo purposes, we'll just create some mock users
       const mockUsers = [
-        { id: '1', name: 'John Doe', email: 'john@example.com', role: 'user', createdAt: new Date('2023-01-15') },
-        { id: '2', name: 'Jane Smith', email: 'jane@example.com', role: 'user', createdAt: new Date('2023-02-20') },
-        { id: '3', name: 'Admin User', email: 'admin@example.com', role: 'admin', createdAt: new Date('2022-12-01') },
+        { id: '1', username: 'johndoe', name: 'John Doe', email: 'john@example.com', role: 'user', createdAt: new Date('2023-01-15') },
+        { id: '2', username: 'janesmith', name: 'Jane Smith', email: 'jane@example.com', role: 'user', createdAt: new Date('2023-02-20') },
+        { id: '3', username: 'adminuser', name: 'Admin User', email: 'admin@example.com', role: 'admin', createdAt: new Date('2022-12-01') },
       ] as User[];
       setUsers(mockUsers);
       
@@ -800,7 +801,7 @@ const AdminDashboard: React.FC = () => {
           <Button 
             onClick={handleStatusUpdate} 
             variant="contained" 
-            disabled={updating || (selectedIssue && newStatus === selectedIssue.status)}
+            disabled={updating || !!(selectedIssue && newStatus === selectedIssue.status)}
             sx={{ 
               backgroundColor: '#4CAF50',
               '&:hover': {

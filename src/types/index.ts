@@ -3,7 +3,10 @@
 export interface User {
   id: string;
   username: string;
+  name: string;
   email: string;
+  role: string;
+  createdAt: Date;
   isAdmin?: boolean;
 }
 
@@ -33,6 +36,8 @@ export interface Flag {
   reason: string;
   reportedBy: string;
   reportedAt: Date;
+  flaggedBy: string;
+  flaggedAt: Date;
 }
 
 export interface StatusLog {

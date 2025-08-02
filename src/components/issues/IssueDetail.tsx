@@ -326,7 +326,7 @@ const IssueDetail: React.FC<IssueDetailProps> = ({
                           </Typography>
                         )}
                       </Box>
-                      {index < issue.statusLogs.length - 1 && <Divider sx={{ backgroundColor: '#333' }} />}
+                      {issue.statusLogs && index < issue.statusLogs.length - 1 && <Divider sx={{ backgroundColor: '#333' }} />}
                     </Box>
                   ))}
                 </Paper>
