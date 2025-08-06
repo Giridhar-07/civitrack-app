@@ -27,7 +27,6 @@ import {
   Card,
   CardContent,
   Divider,
-  useTheme,
   Avatar
 } from '@mui/material';
 import {
@@ -46,7 +45,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { Issue, IssueStatus, IssueCategory, User } from '../../types';
 import issueService from '../../services/issueService';
-import authService from '../../services/authService';
+import { useApi, useFiltering, usePagination, useTheme, useNotification } from '../../hooks';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -82,19 +81,62 @@ function a11yProps(index: number) {
 }
 
 const AdminDashboard: React.FC = () => {
-  const theme = useTheme();
+  const { theme } = useTheme();
   const navigate = useNavigate();
+  const { showSuccess, showError } = useNotification();
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [tabValue, setTabValue] = useState(0);
-  const [issues, setIssues] = useState<Issue[]>([]);
+  
+  // Use our custom hook for API calls
+  const { 
+    data: issues = [], 
+    loading, 
+    error: apiError,
+    execute: fetchIssues
+  } = useApi(issueService.getAllIssues);
+  
   const [flaggedIssues, setFlaggedIssues] = useState<Issue[]>([]);
   const [users, setUsers] = useState<User[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-  const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(10);
-  const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [categoryFilter, setCategoryFilter] = useState<string>('all');
-  const [searchTerm, setSearchTerm] = useState<string>('');
+  
+  // Use our custom filtering hook
+  const {
+    filters,
+    setFilter,
+    filteredData: filteredIssues
+  } = useFiltering({
+    data: issues ?? [],
+    initialFilters: {
+      searchTerm: '',
+      status: 'all',
+      category: 'all'
+    },
+    filterFn: (issue, filters) => {
+      const searchTermLower = filters.searchTerm ? String(filters.searchTerm).toLowerCase() : '';
+      const titleStr = issue.title !== undefined && issue.title !== null ? issue.title.toString().toLowerCase() : '';
+      const descriptionStr = issue.description !== undefined && issue.description !== null ? issue.description.toString().toLowerCase() : '';
+      const matchesSearch = !filters.searchTerm || 
+        titleStr.includes(searchTermLower) || 
+        descriptionStr.includes(searchTermLower);
+      
+      const matchesStatus = filters.status === 'all' || issue.status === filters.status;
+      const matchesCategory = filters.category === 'all' || issue.category === filters.category;
+      
+      return matchesSearch && matchesStatus && matchesCategory;
+    }
+  });
+  
+  // Use our custom pagination hook
+  const {
+    page,
+    pageSize: rowsPerPage,
+    setPage,
+    setPageSize: setRowsPerPage,
+    metadata
+  } = usePagination({
+    initialPage: 0,
+    initialPageSize: 10,
+    totalItems: filteredIssues.length
+  });
   
   // Stats
   const [stats, setStats] = useState({
@@ -122,20 +164,9 @@ const AdminDashboard: React.FC = () => {
   }, []);
 
   const fetchDashboardData = async () => {
-    setLoading(true);
-    setError(null);
-    
     try {
-      // In a real application, these would be separate admin API endpoints
-      // For this demo, we'll use the existing services
-      
       // Fetch all issues
-      const allIssues = await issueService.getAllIssues();
-      setIssues(allIssues);
-      
-      // Filter flagged issues
-      const flagged = allIssues.filter(issue => issue.flags && issue.flags.length > 0);
-      setFlaggedIssues(flagged);
+      await fetchIssues();
       
       // In a real app, you would have an admin service to get users
       // For demo purposes, we'll just create some mock users
@@ -145,24 +176,9 @@ const AdminDashboard: React.FC = () => {
         { id: '3', username: 'adminuser', name: 'Admin User', email: 'admin@example.com', role: 'admin', createdAt: new Date('2022-12-01') },
       ] as User[];
       setUsers(mockUsers);
-      
-      // Calculate stats
-      const resolved = allIssues.filter(issue => issue.status === IssueStatus.RESOLVED).length;
-      const pending = allIssues.filter(issue => issue.status !== IssueStatus.RESOLVED && issue.status !== IssueStatus.CLOSED).length;
-      
-      setStats({
-        totalIssues: allIssues.length,
-        resolvedIssues: resolved,
-        pendingIssues: pending,
-        flaggedIssues: flagged.length,
-        totalUsers: mockUsers.length
-      });
-      
     } catch (err) {
       console.error('Error fetching dashboard data:', err);
-      setError('Failed to load dashboard data. Please try again later.');
-    } finally {
-      setLoading(false);
+      showError('Failed to load dashboard data. Please try again later.');
     }
   };
 
@@ -180,17 +196,17 @@ const AdminDashboard: React.FC = () => {
   };
 
   const handleStatusFilterChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setStatusFilter(event.target.value);
+    setFilter('status', event.target.value);
     setPage(0);
   };
 
   const handleCategoryFilterChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setCategoryFilter(event.target.value);
+    setFilter('category', event.target.value);
     setPage(0);
   };
 
   const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchTerm(event.target.value);
+    setFilter('searchTerm', event.target.value);
     setPage(0);
   };
 
@@ -227,12 +243,12 @@ const AdminDashboard: React.FC = () => {
       await issueService.updateIssueStatus(selectedIssue.id, newStatus, statusComment);
       
       // Update the issues list
-      const updatedIssues = issues.map(issue => 
+      const updatedIssues = issues ? issues.map(issue => 
         issue.id === selectedIssue.id 
           ? { ...issue, status: newStatus } 
-          : issue
-      );
-      setIssues(updatedIssues);
+          : issue 
+      ) : [];
+      await fetchIssues(); // Refetch issues from API after update
       
       // Update flagged issues if necessary
       if (selectedIssue.flags && selectedIssue.flags.length > 0) {
@@ -250,7 +266,7 @@ const AdminDashboard: React.FC = () => {
       handleStatusDialogClose();
     } catch (error) {
       console.error('Failed to update status:', error);
-      setError('Failed to update issue status. Please try again.');
+      setErrorMessage('Failed to update issue status. Please try again.');
     } finally {
       setUpdating(false);
     }
@@ -265,8 +281,8 @@ const AdminDashboard: React.FC = () => {
       // For demo purposes, we'll just remove it from the state
       
       // Remove from issues list
-      const updatedIssues = issues.filter(issue => issue.id !== issueToDelete);
-      setIssues(updatedIssues);
+      const updatedIssues = issues?.filter(issue => issue.id !== issueToDelete) ?? [];
+await fetchIssues(); // Refetch issues from API after deletion
       
       // Remove from flagged issues if present
       const updatedFlagged = flaggedIssues.filter(issue => issue.id !== issueToDelete);
@@ -278,7 +294,7 @@ const AdminDashboard: React.FC = () => {
       handleDeleteDialogClose();
     } catch (error) {
       console.error('Failed to delete issue:', error);
-      setError('Failed to delete issue. Please try again.');
+      setErrorMessage('Failed to delete issue. Please try again.');
     } finally {
       setDeleting(false);
     }
@@ -325,17 +341,28 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
-  // Filter issues based on search term, status, and category
-  const filteredIssues = issues.filter(issue => {
-    const matchesSearch = searchTerm === '' || 
-      issue.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
-      issue.description.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesStatus = statusFilter === 'all' || issue.status === statusFilter;
-    const matchesCategory = categoryFilter === 'all' || issue.category === categoryFilter;
-    
-    return matchesSearch && matchesStatus && matchesCategory;
-  });
+  // Calculate stats based on issues data
+  useEffect(() => {
+    if (issues && issues.length > 0) {
+      // Filter flagged issues
+      const flagged = issues.filter(issue => issue.flags && issue.flags.length > 0);
+      setFlaggedIssues(flagged);
+      
+      // Calculate stats
+      const resolved = issues.filter(issue => issue.status === IssueStatus.RESOLVED).length;
+      const pending = issues.filter(issue => 
+        issue.status !== IssueStatus.RESOLVED && issue.status !== IssueStatus.CLOSED
+      ).length;
+      
+      setStats({
+        totalIssues: issues.length,
+        resolvedIssues: resolved,
+        pendingIssues: pending,
+        flaggedIssues: flagged.length,
+        totalUsers: users.length
+      });
+    }
+  }, [issues, users]);
 
   // Get paginated issues
   const paginatedIssues = filteredIssues.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
@@ -350,9 +377,9 @@ const AdminDashboard: React.FC = () => {
 
   return (
     <Box sx={{ width: '100%' }}>
-      {error && (
+      {apiError && (
         <Alert severity="error" sx={{ mb: 3 }}>
-          {error}
+          {apiError?.message || JSON.stringify(apiError) || 'An error occurred'}
         </Alert>
       )}
       
@@ -470,7 +497,7 @@ const AdminDashboard: React.FC = () => {
             label="Search Issues"
             variant="outlined"
             size="small"
-            value={searchTerm}
+            value={filters.searchTerm}
             onChange={handleSearchChange}
             InputProps={{
               startAdornment: <SearchIcon fontSize="small" sx={{ mr: 1, color: 'text.secondary' }} />,
@@ -482,7 +509,7 @@ const AdminDashboard: React.FC = () => {
             <TextField
               select
               label="Status"
-              value={statusFilter}
+              value={filters.status}
               onChange={handleStatusFilterChange}
               variant="outlined"
               size="small"
@@ -502,7 +529,7 @@ const AdminDashboard: React.FC = () => {
             <TextField
               select
               label="Category"
-              value={categoryFilter}
+              value={filters.category}
               onChange={handleCategoryFilterChange}
               variant="outlined"
               size="small"
@@ -599,6 +626,12 @@ const AdminDashboard: React.FC = () => {
           page={page}
           onPageChange={handleChangePage}
           onRowsPerPageChange={handleChangeRowsPerPage}
+          sx={{ 
+            color: '#fff',
+            '.MuiTablePagination-selectIcon': {
+              color: '#aaa',
+            },
+          }}
         />
       </TabPanel>
       

@@ -26,10 +26,36 @@ const LoginForm: React.FC = () => {
     setLoading(true);
 
     try {
-      await authService.login(credentials);
-      navigate('/');
+      console.log('Submitting login form with credentials:', { email: credentials.email });
+      const response = await authService.login(credentials);
+      console.log('Login successful, navigating to home page');
+      
+      // Add a small delay before navigation to ensure token is stored
+      setTimeout(() => {
+        navigate('/');
+      }, 100);
+      
+      return response;
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Login failed. Please try again.');
+      console.error('Login failed:', err);
+      
+      // Extract detailed error message from response
+      let errorMessage = 'Login failed. Please try again.';
+      
+      // Handle different error types
+      if (err.errorCode === 'NETWORK_ERROR' || err.errorCode === 'TIMEOUT_ERROR') {
+        // Handle network errors
+        errorMessage = err.message || 'Network connection issue. Please check your internet connection and try again.';
+      } else if (err.statusCode === 401) {
+        // Handle authentication errors
+        errorMessage = 'Invalid email or password. Please try again.';
+      } else if (err.message) {
+        // Use the error message if available
+        errorMessage = err.message;
+      }
+      
+      setError(errorMessage);
+      return null;
     } finally {
       setLoading(false);
     }
@@ -42,9 +68,13 @@ const LoginForm: React.FC = () => {
       </Typography>
       
       {error && (
-        <Typography color="error" variant="body2" sx={{ mb: 2 }}>
-          {error}
-        </Typography>
+        <Box sx={{ mb: 2, p: 2, backgroundColor: 'rgba(244, 67, 54, 0.1)', borderRadius: 1 }}>
+          {error.split('\n').map((line, index) => (
+            <Typography key={index} color="error" variant="body2" sx={{ mb: index < error.split('\n').length - 1 ? 1 : 0 }}>
+              {line}
+            </Typography>
+          ))}
+        </Box>
       )}
       
       <Box component="form" onSubmit={handleSubmit} noValidate>
@@ -59,6 +89,10 @@ const LoginForm: React.FC = () => {
           autoFocus
           value={credentials.email}
           onChange={handleChange}
+          helperText="Enter your registered email address"
+          FormHelperTextProps={{
+            sx: { color: '#aaa' }
+          }}
           sx={{ 
             mb: 2,
             '& .MuiOutlinedInput-root': {
@@ -89,6 +123,10 @@ const LoginForm: React.FC = () => {
           autoComplete="current-password"
           value={credentials.password}
           onChange={handleChange}
+          helperText="Password must contain uppercase, lowercase, and number"
+          FormHelperTextProps={{
+            sx: { color: '#aaa' }
+          }}
           sx={{ 
             mb: 3,
             '& .MuiOutlinedInput-root': {

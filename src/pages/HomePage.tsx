@@ -9,47 +9,65 @@ import {
   CircularProgress, 
   Alert,
   useMediaQuery,
-  useTheme,
   Tabs,
-  Tab
+  Tab,
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem
 } from '@mui/material';
-import { Add as AddIcon, Map as MapIcon, List as ListIcon } from '@mui/icons-material';
+import { Add as AddIcon, Map as MapIcon, List as ListIcon, Refresh as RefreshIcon } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import IssueList from '../components/issues/IssueList';
 import IssueMap from '../components/map/IssueMap';
 import Layout from '../components/layout/Layout';
 import { Issue } from '../types';
 import issueService from '../services/issueService';
-import authService from '../services/authService';
+import { useAuth, useTheme, useApi } from '../hooks';
 
 const HomePage: React.FC = () => {
-  const theme = useTheme();
+  const { theme } = useTheme();
   const navigate = useNavigate();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const { isAuthenticated } = useAuth();
   
-  const [issues, setIssues] = useState<Issue[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [viewMode, setViewMode] = useState<'list' | 'map'>(isMobile ? 'list' : 'map');
   
   // Get user's current location
   const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
 
+  // State for search functionality
+  const [searchTerm, setSearchTerm] = useState<string>('');
+  const [searchCategory, setSearchCategory] = useState<string>('all');
+  
+  // Use our custom hook for API calls
+  const { 
+    data: issues = [], 
+    loading, 
+    error,
+    execute: fetchIssues
+  } = useApi(issueService.getAllIssues, { immediate: true });
+  
+  // Filtered issues based on search term and category
+  const filteredIssues = React.useMemo(() => {
+    if (!searchTerm && searchCategory === 'all') return issues;
+    
+    return issues?.filter(issue => {
+      const matchesTerm = searchTerm ? 
+        issue.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
+        issue.description.toLowerCase().includes(searchTerm.toLowerCase()) : 
+        true;
+        
+      const matchesCategory = searchCategory !== 'all' ? 
+        issue.category === searchCategory : 
+        true;
+        
+      return matchesTerm && matchesCategory;
+    });
+  }, [issues, searchTerm, searchCategory]);
+
   useEffect(() => {
-    // Check if user is authenticated
-    const checkAuth = async () => {
-      try {
-        const auth = await authService.isAuthenticated();
-        setIsAuthenticated(auth);
-      } catch (error) {
-        console.error('Error checking authentication:', error);
-        setIsAuthenticated(false);
-      }
-    };
-
-    checkAuth();
-
     // Get user's current location
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
@@ -66,26 +84,27 @@ const HomePage: React.FC = () => {
       console.error('Geolocation is not supported by this browser.');
       setUserLocation([40.7128, -74.0060]); // Default coordinates
     }
-
-    // Fetch issues
-    const fetchIssues = async () => {
-      setLoading(true);
-      try {
-        const data = await issueService.getAllIssues();
-        setIssues(data);
-      } catch (err) {
-        console.error('Error fetching issues:', err);
-        setError('Failed to load issues. Please try again later.');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchIssues();
   }, []);
 
   const handleViewModeChange = (event: React.SyntheticEvent, newValue: 'list' | 'map') => {
+    console.log('Changing view mode to:', newValue);
     setViewMode(newValue);
+  };
+  
+  // Handle search input change
+  const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchTerm(event.target.value);
+  };
+  
+  // Handle category filter change
+  const handleCategoryChange = (event: React.ChangeEvent<{ value: unknown }>) => {
+    setSearchCategory(event.target.value as string);
+  };
+  
+  // Refresh issues
+  const handleRefresh = () => {
+    console.log('Refreshing issues...');
+    fetchIssues();
   };
 
   const handleReportIssue = () => {
@@ -124,6 +143,44 @@ const HomePage: React.FC = () => {
           )}
         </Box>
         
+        {/* Search and filter section */}
+        <Paper sx={{ p: 2, mb: 3, borderRadius: 2 }}>
+          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+            <TextField
+              label="Search issues"
+              variant="outlined"
+              size="small"
+              fullWidth
+              value={searchTerm}
+              onChange={handleSearchChange}
+              sx={{ flexGrow: 1, minWidth: '200px' }}
+            />
+            <FormControl variant="outlined" size="small" sx={{ minWidth: '150px' }}>
+              <InputLabel id="category-filter-label">Category</InputLabel>
+              <Select
+                labelId="category-filter-label"
+                value={searchCategory}
+                onChange={(event) => handleCategoryChange(event as any)}
+                label="Category"
+              >
+                <MenuItem value="all">All Categories</MenuItem>
+                <MenuItem value="roads">Roads</MenuItem>
+                <MenuItem value="utilities">Utilities</MenuItem>
+                <MenuItem value="parks">Parks</MenuItem>
+                <MenuItem value="safety">Safety</MenuItem>
+                <MenuItem value="other">Other</MenuItem>
+              </Select>
+            </FormControl>
+            <Button
+              variant="outlined"
+              onClick={handleRefresh}
+              startIcon={<RefreshIcon />}
+            >
+              Refresh
+            </Button>
+          </Box>
+        </Paper>
+        
         {isMobile && (
           <Paper sx={{ mb: 3, borderRadius: 2 }}>
             <Tabs
@@ -154,14 +211,14 @@ const HomePage: React.FC = () => {
           </Box>
         ) : error ? (
           <Alert severity="error" sx={{ mb: 3 }}>
-            {error}
-          </Alert>
+          {error?.message || 'An error occurred'}
+        </Alert>
         ) : (
           <Grid container spacing={4}>
             {(!isMobile || viewMode === 'list') && (
               <Grid item xs={12} md={6} lg={5} xl={4}>
                 <IssueList 
-                  issues={issues} 
+                  issues={filteredIssues || []} 
                   loading={false} 
                   error={null} 
                 />
@@ -180,11 +237,21 @@ const HomePage: React.FC = () => {
                   }}
                 >
                   <IssueMap 
-                    issues={issues} 
+                    issues={Array.isArray(filteredIssues) ? filteredIssues : []} 
                     center={userLocation || [40.7128, -74.0060]} 
                     zoom={12} 
                     height="100%"
                   />
+                </Paper>
+              </Grid>
+            )}
+            
+            {filteredIssues?.length === 0 && !loading && (
+              <Grid item xs={12}>
+                <Paper sx={{ p: 3, textAlign: 'center', borderRadius: 2 }}>
+                  <Typography variant="body1" color="text.secondary">
+                    No issues found matching your search criteria.
+                  </Typography>
                 </Paper>
               </Grid>
             )}

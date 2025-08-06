@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { 
   Grid, 
   Box, 
@@ -18,6 +18,7 @@ import {
 import { Search as SearchIcon } from '@mui/icons-material';
 import IssueCard from './IssueCard';
 import { Issue, IssueStatus, IssueCategory } from '../../types';
+import { usePagination, useFiltering } from '../../hooks';
 
 interface IssueListProps {
   issues: Issue[];
@@ -30,7 +31,7 @@ interface IssueListProps {
 }
 
 const IssueList: React.FC<IssueListProps> = ({ 
-  issues, 
+  issues = [], 
   loading, 
   error, 
   onFlagIssue,
@@ -38,40 +39,63 @@ const IssueList: React.FC<IssueListProps> = ({
   selectedIssues = [],
   onSelectIssue
  }) => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('');
-  const [categoryFilter, setCategoryFilter] = useState<string>('');
-  const [page, setPage] = useState(1);
-  const issuesPerPage = 9;
-
-  // Filter issues based on search term and filters
-  const filteredIssues = issues.filter(issue => {
-    const matchesSearch = issue.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                         issue.description.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter ? issue.status === statusFilter : true;
-    const matchesCategory = categoryFilter ? issue.category === categoryFilter : true;
-    
-    return matchesSearch && matchesStatus && matchesCategory;
+  // Setup filtering with custom hook
+  const { 
+    filters, 
+    setFilter, 
+    filteredData: filteredIssues 
+  } = useFiltering({
+    data: Array.isArray(issues) ? issues : [],
+    initialFilters: {
+      searchTerm: '',
+      status: '',
+      category: ''
+    },
+    filterFn: (issue, filters) => {
+      const matchesSearch = !filters.searchTerm || 
+        (typeof issue.title === 'string' && typeof filters.searchTerm === 'string' && 
+         issue.title.toLowerCase().includes(filters.searchTerm.toLowerCase())) || 
+        (typeof issue.description === 'string' && typeof filters.searchTerm === 'string' && 
+         issue.description.toLowerCase().includes(filters.searchTerm.toLowerCase()));
+      
+      const matchesStatus = !filters.status || issue.status === filters.status;
+      const matchesCategory = !filters.category || issue.category === filters.category;
+      
+      return matchesSearch && matchesStatus && matchesCategory;
+    }
   });
 
-  // Paginate issues
-  const indexOfLastIssue = page * issuesPerPage;
-  const indexOfFirstIssue = indexOfLastIssue - issuesPerPage;
-  const currentIssues = filteredIssues.slice(indexOfFirstIssue, indexOfLastIssue);
-  const totalPages = Math.ceil(filteredIssues.length / issuesPerPage);
+  // Setup pagination with custom hook
+  const { 
+    page, 
+    pageSize, 
+    totalPages, 
+    setPage,
+    metadata: { 
+      startIndex: firstItemIndex, 
+      endIndex: lastItemIndex 
+    } 
+  } = usePagination({
+    initialPage: 1,
+    initialPageSize: 9,
+    totalItems: filteredIssues.length
+  });
+
+  // Get current page of issues
+  const currentIssues = filteredIssues.slice(firstItemIndex, lastItemIndex + 1);
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchTerm(e.target.value);
+    setFilter('searchTerm', e.target.value);
     setPage(1); // Reset to first page when search changes
   };
 
   const handleStatusFilterChange = (e: SelectChangeEvent<string>) => {
-    setStatusFilter(e.target.value);
+    setFilter('status', e.target.value);
     setPage(1);
   };
 
   const handleCategoryFilterChange = (e: SelectChangeEvent<string>) => {
-    setCategoryFilter(e.target.value);
+    setFilter('category', e.target.value);
     setPage(1);
   };
 
@@ -91,7 +115,7 @@ const IssueList: React.FC<IssueListProps> = ({
             <TextField
               fullWidth
               placeholder="Search issues..."
-              value={searchTerm}
+              value={filters.searchTerm || ''}
               onChange={handleSearchChange}
               InputProps={{
                 startAdornment: (
@@ -121,7 +145,7 @@ const IssueList: React.FC<IssueListProps> = ({
               <InputLabel id="status-filter-label" sx={{ color: '#aaa' }}>Status</InputLabel>
               <Select
                 labelId="status-filter-label"
-                value={statusFilter}
+                value={filters.status?.toString() || ''}
                 label="Status"
                 onChange={handleStatusFilterChange}
                 sx={{ 
@@ -150,22 +174,22 @@ const IssueList: React.FC<IssueListProps> = ({
             <FormControl fullWidth>
               <InputLabel id="category-filter-label" sx={{ color: '#aaa' }}>Category</InputLabel>
               <Select
-                labelId="category-filter-label"
-                value={categoryFilter}
-                label="Category"
-                onChange={handleCategoryFilterChange}
-                sx={{ 
-                  '& .MuiOutlinedInput-notchedOutline': {
-                    borderColor: '#444',
-                  },
-                  '&:hover .MuiOutlinedInput-notchedOutline': {
-                    borderColor: '#666',
-                  },
-                  '& .MuiInputBase-input': {
-                    color: '#fff',
-                  },
-                }}
-              >
+              labelId="category-filter-label" 
+              value={typeof filters.category === 'string' ? filters.category : ''} 
+              label="Category" 
+              onChange={handleCategoryFilterChange} 
+              sx={{ 
+                '& .MuiOutlinedInput-notchedOutline': {
+                  borderColor: '#444',
+                },
+                '&:hover .MuiOutlinedInput-notchedOutline': {
+                  borderColor: '#666',
+                },
+                '& .MuiInputBase-input': {
+                  color: '#fff',
+                },
+              }}
+            >
                 <MenuItem value="">All Categories</MenuItem>
                 {Object.values(IssueCategory).map((category) => (
                   <MenuItem key={category} value={category}>

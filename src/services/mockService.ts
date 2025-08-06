@@ -146,14 +146,21 @@ const mockToken = 'mock-jwt-token';
 const mockService = {
   // Auth methods
   login: async (email: string, password: string) => {
+    console.log('mockService: login called with email:', email);
     // Simulate network delay
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await new Promise(resolve => setTimeout(resolve, 800));
     
     const user = mockUsers.find(u => u.email === email);
-    if (user) {
-      // In a real app, we would verify the password here
-      return { user, token: mockToken };
+    console.log('mockService: found user:', user ? 'yes' : 'no');
+    
+    // In a real app, we would verify the password here
+    if (user && password === 'password') {
+      console.log('mockService: login successful');
+      const token = 'mock-jwt-token-' + Date.now();
+      localStorage.setItem('mock_current_user', JSON.stringify(user));
+      return { user, token };
     }
+    console.log('mockService: login failed - invalid credentials');
     throw new Error('Invalid credentials');
   },
   
@@ -181,11 +188,33 @@ const mockService = {
   },
   
   getCurrentUser: async () => {
+    console.log('mockService: getCurrentUser called');
     // Simulate network delay
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await new Promise(resolve => setTimeout(resolve, 300));
     
-    // In a real app, we would verify the token and return the corresponding user
-    return mockUsers[0];
+    // Check if we have a stored user from login
+    const storedUser = localStorage.getItem('mock_current_user');
+    if (storedUser) {
+      console.log('mockService: returning stored user');
+      return JSON.parse(storedUser);
+    }
+    
+    // If no stored user but we have a token, return a default admin user
+    const token = localStorage.getItem('token');
+    if (token && token.startsWith('mock-jwt-token')) {
+      console.log('mockService: returning default admin user');
+      return mockUsers.find(user => user.role === 'admin');
+    }
+    
+    console.log('mockService: no authenticated user found');
+    return null;
+  },
+  
+  logout: () => {
+    console.log('mockService: logout called');
+    // Clear stored mock user
+    localStorage.removeItem('mock_current_user');
+    return { success: true };
   },
   
   // Issue methods

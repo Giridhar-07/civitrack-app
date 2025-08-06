@@ -13,7 +13,8 @@ import {
   StepLabel,
   Card,
   CardMedia,
-  IconButton
+  IconButton,
+  Alert
 } from '@mui/material';
 import { 
   PhotoCamera as PhotoCameraIcon,
@@ -25,31 +26,55 @@ import { useNavigate } from 'react-router-dom';
 import { IssueCategory, Location } from '../../types';
 import LocationPicker from '../map/LocationPicker';
 import issueService, { IssueFormData } from '../../services/issueService';
+import useApiForm from '../../hooks/useApiForm';
 
 const IssueForm: React.FC = () => {
   const navigate = useNavigate();
   const [activeStep, setActiveStep] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
-  
-  const [formData, setFormData] = useState<IssueFormData>({
-    title: '',
-    description: '',
-    category: IssueCategory.OTHER,
-    location: { latitude: 0, longitude: 0 },
-    photos: []
-  });
-  
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
   const [photoPreviewUrls, setPhotoPreviewUrls] = useState<string[]>([]);
+  
+  // Initialize form with useApiForm hook
+  const form = useApiForm<IssueFormData, void>(
+    // Submit function
+    async (data) => {
+      await issueService.createIssue(data);
+    },
+    {
+      // Initial form data
+      initialData: {
+        title: '',
+        description: '',
+        category: IssueCategory.OTHER,
+        location: { latitude: 0, longitude: 0 },
+        photos: []
+      },
+      // Success callback
+      onSuccess: () => {
+        setSuccess(true);
+        // Clean up preview URLs
+        photoPreviewUrls.forEach(url => URL.revokeObjectURL(url));
+        // Redirect after a short delay
+        setTimeout(() => {
+          navigate('/');
+        }, 2000);
+      },
+      // Reset form after successful submission
+      resetOnSuccess: true
+    }
+  );
 
+  // Destructure form state and handlers
+  const { data: formData, submitting, error, fieldErrors, handleSubmit } = form;
+
+  const [formDataState, setFormData] = React.useState(formData);
+  const [errorState, setError] = React.useState<string | null>(null);
+
+  // Handle form input changes
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
+    form.handleChange(name as keyof IssueFormData, value);
   };
 
   const handleLocationSelect = (location: Location) => {
@@ -58,6 +83,10 @@ const IssueForm: React.FC = () => {
       location
     }));
   };
+
+  // Replace formData and error usage with state variables
+  const currentFormData = formDataState;
+  const currentError = errorState;
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -104,26 +133,26 @@ const IssueForm: React.FC = () => {
   };
 
   const validateStep = (step: number): boolean => {
-    setError(null);
+setError(null);
     
     switch (step) {
       case 0: // Basic info
-        if (!formData.title.trim()) {
+        if (!formDataState.title.trim()) {
           setError('Title is required');
           return false;
         }
-        if (!formData.description.trim()) {
+        if (!formDataState.description.trim()) {
           setError('Description is required');
           return false;
         }
-        if (!formData.category) {
+        if (!formDataState.category) {
           setError('Category is required');
           return false;
         }
         return true;
         
       case 1: // Location
-        if (!formData.location || formData.location.latitude === 0 && formData.location.longitude === 0) {
+        if (!formDataState.location || formDataState.location.latitude === 0 && formDataState.location.longitude === 0) {
           setError('Please select a location');
           return false;
         }
@@ -144,30 +173,13 @@ const IssueForm: React.FC = () => {
     setActiveStep(prevStep => prevStep - 1);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!validateStep(activeStep)) return;
     
-    setLoading(true);
-    setError(null);
-    
-    try {
-      await issueService.createIssue(formData);
-      setSuccess(true);
-      
-      // Clean up preview URLs
-      photoPreviewUrls.forEach(url => URL.revokeObjectURL(url));
-      
-      // Redirect after a short delay
-      setTimeout(() => {
-        navigate('/');
-      }, 2000);
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to submit issue. Please try again.');
-    } finally {
-      setLoading(false);
-    }
+    // Use the handleSubmit from useApiForm
+    handleSubmit(e);
   };
 
   const steps = ['Basic Information', 'Location', 'Photos', 'Review & Submit'];
@@ -185,7 +197,7 @@ const IssueForm: React.FC = () => {
               fullWidth
               label="Title"
               name="title"
-              value={formData.title}
+              value={formDataState.title}
               onChange={handleChange}
               margin="normal"
               required
@@ -212,7 +224,7 @@ const IssueForm: React.FC = () => {
               fullWidth
               label="Description"
               name="description"
-              value={formData.description}
+              value={formDataState.description}
               onChange={handleChange}
               margin="normal"
               required
@@ -242,7 +254,7 @@ const IssueForm: React.FC = () => {
               fullWidth
               label="Category"
               name="category"
-              value={formData.category}
+              value={formDataState.category}
               onChange={handleChange}
               margin="normal"
               required
@@ -448,13 +460,23 @@ const IssueForm: React.FC = () => {
         ))}
       </Stepper>
       
-      {error && (
-        <Typography color="error" variant="body2" sx={{ mb: 2 }}>
-          {error}
-        </Typography>
+      {errorState && (
+        <Alert severity="error" sx={{ mb: 3 }}>
+          {errorState}
+        </Alert>
       )}
       
-      <Box component="form" onSubmit={handleSubmit}>
+      {Object.keys(fieldErrors).length > 0 && (
+        <Box sx={{ mb: 2 }}>
+          {Object.entries(fieldErrors).map(([field, message]) => (
+            <Alert severity="warning" key={field} sx={{ mb: 1 }}>
+              {field}: {message}
+            </Alert>
+          ))}
+        </Box>
+      )}
+      
+      <Box component="form" onSubmit={handleFormSubmit}>
         {renderStepContent(activeStep)}
         
         <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 4 }}>
@@ -471,7 +493,7 @@ const IssueForm: React.FC = () => {
               <Button
                 variant="contained"
                 type="submit"
-                disabled={loading}
+                disabled={submitting}
                 sx={{ 
                   backgroundColor: '#4CAF50',
                   '&:hover': {
@@ -479,7 +501,7 @@ const IssueForm: React.FC = () => {
                   },
                 }}
               >
-                {loading ? <CircularProgress size={24} color="inherit" /> : 'Submit Report'}
+                {submitting ? <CircularProgress size={24} color="inherit" /> : 'Submit Report'}
               </Button>
             ) : (
               <Button
