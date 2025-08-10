@@ -1,7 +1,6 @@
-import api from './api';
+import api, { USE_MOCK_SERVICE } from './api';
 import { User } from '../types';
 import mockService from './mockService';
-import USE_MOCK_SERVICE from './api';
 
 export interface LoginCredentials {
   email: string;
@@ -39,6 +38,16 @@ const authService = {
         localStorage.setItem('token', token);
         console.log('Mock token stored in localStorage');
         
+        // Dispatch a storage event to notify other components about the token change
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new StorageEvent('storage', {
+            key: 'token',
+            newValue: token,
+            oldValue: null,
+            storageArea: localStorage
+          }));
+        }
+        
         return { user, token };
       }
       
@@ -52,6 +61,16 @@ const authService = {
       if (response.data && response.data.token) {
         localStorage.setItem('token', response.data.token);
         console.log('Token stored in localStorage');
+        
+        // Dispatch a storage event to notify other components about the token change
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new StorageEvent('storage', {
+            key: 'token',
+            newValue: response.data.token,
+            oldValue: null,
+            storageArea: localStorage
+          }));
+        }
       } else {
         console.warn('No token received in login response');
       }
@@ -70,10 +89,12 @@ const authService = {
         const networkError = new Error('Unable to connect to the server. Please try again later.');
         networkError.errorCode = 'NETWORK_ERROR';
         throw networkError;
-      } else if (error.statusCode === 401) {
+      } else if (error.response?.status === 401 || error.statusCode === 401 || error.status === 401) {
         // Handle authentication errors properly
         console.error('Login API authentication error:', error.message);
-        throw error;
+        const authError = new Error(error.response?.data?.message || 'Invalid email or password');
+        (authError as any).status = 401;
+        throw authError;
       } else {
         console.error('Login API error:', error.response?.data || error.message);
         throw error;
@@ -112,6 +133,17 @@ const authService = {
     console.log('Logging out user, removing token');
     localStorage.removeItem('token');
     console.log('Token removed from localStorage');
+    
+    // Dispatch a storage event to notify other components about the token change
+    if (typeof window !== 'undefined') {
+      // Create and dispatch a storage event to notify other components
+      window.dispatchEvent(new StorageEvent('storage', {
+        key: 'token',
+        newValue: null,
+        oldValue: 'removed-token',
+        storageArea: localStorage
+      }));
+    }
     
     // Clear any other auth-related data from localStorage if needed
     // localStorage.removeItem('user');

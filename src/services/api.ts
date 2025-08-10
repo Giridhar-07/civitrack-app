@@ -5,7 +5,7 @@ import { extractErrorMessage } from '../utils/apiErrorHandler';
 import { createRetryableAxiosInstance } from '../utils/apiRetry';
 
 // Check if we should use mock service
-export const USE_MOCK_SERVICE: boolean = true; // Set to true to use mock service until backend is working
+export const USE_MOCK_SERVICE: boolean = false; // Set to false to use real backend
 console.log('Using mock service:', USE_MOCK_SERVICE);
 
 // Create a retryable axios instance with default config
@@ -30,31 +30,24 @@ const axiosInstance: AxiosInstance = createRetryableAxiosInstance({
 // Add console log to check if API URL is correctly set
 console.log('API URL:', process.env.REACT_APP_API_URL || 'http://localhost:5000/api');
 
+// Helper to normalize API responses (unwrap backend { success, message, data })
+const unwrap = <T>(response: AxiosResponse<any, any>): T => {
+  const resData = response?.data;
+  // If backend wraps payload as { success, message, data }, return inner data
+  if (resData && typeof resData === 'object' && 'data' in resData) {
+    return (resData.data as T);
+  }
+  // Otherwise, return as-is
+  return (resData as T);
+};
+
 // Create a mock API adapter with proper type handling
 const mockApi = {
   get: async <T>(url: string, config?: any): Promise<{ data: T }> => {
     console.log(`Mock GET request to ${url}`);
     if (url === '/auth/me') {
-      const data = await mockService.getCurrentUser();
-      return { data: data as T };
-    }
-    if (url === '/issues') {
-      const data = await mockService.getAllIssues();
-      return { data: data as T };
-    }
-    if (url.startsWith('/issues/')) {
-      const id = url.split('/')[2];
-      if (id === 'user') {
-        const data = await mockService.getIssuesByUser();
-        return { data: data as T };
-      }
-      if (id === 'nearby') {
-        const { latitude, longitude, radius } = config?.params || {};
-        const data = await mockService.getNearbyIssues(latitude, longitude, radius);
-        return { data: data as T };
-      }
-      const data = await mockService.getIssueById(id);
-      return { data: data as T };
+      const user = await mockService.getCurrentUser();
+      return { data: user as T };
     }
     throw new Error(`Unhandled mock GET request to ${url}`);
   },
@@ -62,17 +55,10 @@ const mockApi = {
     console.log(`Mock POST request to ${url}`);
     if (url === '/auth/login') {
       const response = await mockService.login(data.email, data.password);
-      return { data: response as T };
+      // mockService returns { token, user }
+      return { data: (response as any) as T };
     }
-    if (url === '/auth/register') {
-      const response = await mockService.register(data.username, data.email, data.password);
-      return { data: response as T };
-    }
-    if (url === '/issues') {
-      const response = await mockService.createIssue(data);
-      return { data: response as T };
-    }
-    if (/\/issues\/[\w-]+\/flag/.test(url)) {
+    if (url.startsWith('/issues/') && url.endsWith('/flag')) {
       const id = url.split('/')[2];
       const response = await mockService.flagIssue(id, data.reason);
       return { data: response as T };
@@ -106,23 +92,23 @@ interface ApiInterface {
 const api: ApiInterface = USE_MOCK_SERVICE ? mockApi : {
   get: async <T>(url: string, config?: any) => {
     const response = await axiosInstance.get<T>(url, config);
-    return { data: response.data };
+    return { data: unwrap<T>(response) };
   },
   post: async <T>(url: string, data?: any, config?: any) => {
     const response = await axiosInstance.post<T>(url, data, config);
-    return { data: response.data };
+    return { data: unwrap<T>(response) };
   },
   put: async <T>(url: string, data?: any, config?: any) => {
     const response = await axiosInstance.put<T>(url, data, config);
-    return { data: response.data };
+    return { data: unwrap<T>(response) };
   },
   patch: async <T>(url: string, data?: any, config?: any) => {
     const response = await axiosInstance.patch<T>(url, data, config);
-    return { data: response.data };
+    return { data: unwrap<T>(response) };
   },
   delete: async <T>(url: string, config?: any) => {
     const response = await axiosInstance.delete<T>(url, config);
-    return { data: response.data };
+    return { data: unwrap<T>(response) };
   }
 };
 
@@ -171,7 +157,7 @@ if (!USE_MOCK_SERVICE) {
       
       // Check if this is a network error or timeout
       const isNetworkError = !error.response || 
-        error.code === 'ECONNABORTED' || 
+        (error as any).code === 'ECONNABORTED' || 
         errorResponse.errorCode === 'NETWORK_ERROR' || 
         errorResponse.errorCode === 'TIMEOUT_ERROR';
       
@@ -183,14 +169,30 @@ if (!USE_MOCK_SERVICE) {
         // For login endpoint, don't treat 401 as a network error
         const isLoginRequest = error.config?.url?.includes('/auth/login');
         
+        // For register endpoint, don't treat 401 as a network error
+        const isRegisterRequest = error.config?.url?.includes('/auth/register');
+        
         // Clear token and redirect to login only if it's not the /auth/me endpoint
         // or if explicitly specified in the error response
-        // Also don't logout if it's a network error
-        if (!isAuthMeRequest && !isNetworkError && !isLoginRequest) {
+        // Also don't logout if it's a network error or login/register request
+        if (!isAuthMeRequest && !isNetworkError && !isLoginRequest && !isRegisterRequest) {
+          console.log('API: Authentication error, clearing token and redirecting to login');
           localStorage.removeItem('token');
-          // Only redirect if we're in a browser environment
+          
+          // Dispatch a storage event to notify other components about the token change
           if (typeof window !== 'undefined') {
-            window.location.href = '/login';
+            // Create and dispatch a storage event to notify other components
+            window.dispatchEvent(new StorageEvent('storage', {
+              key: 'token',
+              newValue: null,
+              oldValue: 'removed-token',
+              storageArea: localStorage
+            }));
+            
+            // Redirect to login page after a short delay to allow the event to be processed
+            setTimeout(() => {
+              window.location.href = '/login';
+            }, 100);
           }
         }
       }

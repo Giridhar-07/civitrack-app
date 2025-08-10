@@ -157,7 +157,7 @@ const ProfilePage: React.FC = () => {
                     mb: 2
                   }}
                 >
-                  {user.name.charAt(0).toUpperCase()}
+                  {(user?.name?.[0] ?? user?.username?.[0] ?? '?').toUpperCase()}
                 </Avatar>
                 <Typography variant="h5" gutterBottom>
                   {user.name}

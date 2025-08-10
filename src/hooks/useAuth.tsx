@@ -152,10 +152,10 @@ const useAuthProvider = (): AuthContextType => {
     }
   );
 
-  // Check authentication status on mount
+  // Check authentication status on mount and when token changes
   useEffect(() => {
     const checkAuth = async () => {
-      console.log('Checking authentication status on mount');
+      console.log('Checking authentication status');
       if (authService.isAuthenticated()) {
         console.log('Token found, attempting to get current user');
         try {
@@ -196,21 +196,66 @@ const useAuthProvider = (): AuthContextType => {
     };
 
     checkAuth();
+    
+    // Add event listener for storage changes to detect login/logout in other tabs
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'token') {
+        console.log('Token changed in storage, refreshing authentication state');
+        checkAuth();
+      }
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, []); // Remove getCurrentUserApi dependency to prevent infinite loop
+
+  // Clear error function
+  const clearError = useCallback(() => {
+    setAuthState(prev => ({ ...prev, error: null }));
   }, []);
 
   // Login function
   const login = useCallback(async (credentials: LoginCredentials): Promise<boolean> => {
-    console.log('Login function called with credentials:', { email: credentials.email });
-    const result = await loginApi.execute(credentials);
-    console.log('Login API result:', !!result ? 'success' : 'failed');
-    return !!result;
-  }, [loginApi]);
+    clearError();
+    setAuthState(prev => ({ ...prev, loading: true }));
+    
+    try {
+      const result = await loginApi.execute(credentials);
+      console.log('Login API result:', !!result ? 'success' : 'failed');
+      return !!result;
+    } catch (error: any) {
+      console.error('Login error in useAuth:', error);
+      setAuthState(prev => ({
+        ...prev,
+        loading: false,
+        error: error.message || 'Failed to login'
+      }));
+      return false;
+    }
+  }, [loginApi, clearError, setAuthState]);
 
   // Register function
   const register = useCallback(async (userData: RegisterData): Promise<boolean> => {
-    const result = await registerApi.execute(userData);
-    return !!result;
-  }, [registerApi]);
+    clearError();
+    setAuthState(prev => ({ ...prev, loading: true }));
+    
+    try {
+      const result = await registerApi.execute(userData);
+      console.log('Register API result:', !!result ? 'success' : 'failed');
+      return !!result;
+    } catch (error: any) {
+      console.error('Register error in useAuth:', error);
+      setAuthState(prev => ({
+        ...prev,
+        loading: false,
+        error: error.message || 'Failed to register'
+      }));
+      return false;
+    }
+  }, [registerApi, clearError, setAuthState]);
 
   // Logout function
   const logout = useCallback(() => {
@@ -223,11 +268,6 @@ const useAuthProvider = (): AuthContextType => {
       error: null
     });
     console.log('Auth state reset after logout');
-  }, []);
-
-  // Clear error function
-  const clearError = useCallback(() => {
-    setAuthState(prev => ({ ...prev, error: null }));
   }, []);
 
   return {

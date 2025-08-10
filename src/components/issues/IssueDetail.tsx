@@ -303,32 +303,39 @@ const IssueDetail: React.FC<IssueDetailProps> = ({
                   Status History
                 </Typography>
                 <Paper variant="outlined" sx={{ p: 0, backgroundColor: 'transparent', borderColor: '#444' }}>
-                  {issue.statusLogs.map((log: StatusLog, index: number) => (
-                    <Box key={log.id}>
-                      <Box sx={{ p: 2 }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                          <Avatar sx={{ width: 32, height: 32, bgcolor: getStatusColor(log.status), mr: 1 }}>
-                            {log.status.charAt(0).toUpperCase()}
-                          </Avatar>
-                          <Box>
-                            <Typography variant="subtitle2">
-                              Status changed to <strong>{log.status}</strong>
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary">
-                              {formatDate(log.changedAt)} by {log.changedBy}
-                            </Typography>
+                  {issue.statusLogs.map((log: StatusLog, index: number) => {
+                    // Map backend fields to frontend expected fields
+                    const statusToDisplay = (log as any).status || (log as any).newStatus || 'reported';
+                    const changedBy = (log as any).changedBy || (log as any).user?.name || (log as any).user?.username || 'Unknown';
+                    const changedAt = (log as any).changedAt || (log as any).createdAt;
+                    
+                    return (
+                      <Box key={log.id}>
+                        <Box sx={{ p: 2 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                            <Avatar sx={{ width: 32, height: 32, bgcolor: getStatusColor(statusToDisplay as IssueStatus), mr: 1 }}>
+                              {statusToDisplay && typeof statusToDisplay === 'string' ? statusToDisplay.charAt(0).toUpperCase() : '?'}
+                            </Avatar>
+                            <Box>
+                              <Typography variant="subtitle2">
+                                Status changed to <strong>{statusToDisplay}</strong>
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                {formatDate(changedAt)} by {changedBy}
+                              </Typography>
+                            </Box>
                           </Box>
+                          
+                          {log.comment && (
+                            <Typography variant="body2" sx={{ pl: 5 }}>
+                              {log.comment}
+                            </Typography>
+                          )}
                         </Box>
-                        
-                        {log.comment && (
-                          <Typography variant="body2" sx={{ pl: 5 }}>
-                            {log.comment}
-                          </Typography>
-                        )}
+                        {issue.statusLogs && index < issue.statusLogs.length - 1 && <Divider sx={{ backgroundColor: '#333' }} />}
                       </Box>
-                      {issue.statusLogs && index < issue.statusLogs.length - 1 && <Divider sx={{ backgroundColor: '#333' }} />}
-                    </Box>
-                  ))}
+                    );
+                  })}
                 </Paper>
               </Box>
             )}

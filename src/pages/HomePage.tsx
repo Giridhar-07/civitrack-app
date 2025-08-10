@@ -22,7 +22,7 @@ import { useNavigate } from 'react-router-dom';
 import IssueList from '../components/issues/IssueList';
 import IssueMap from '../components/map/IssueMap';
 import Layout from '../components/layout/Layout';
-import { Issue } from '../types';
+import { Issue, IssueCategory } from '../types';
 import issueService from '../services/issueService';
 import { useAuth, useTheme, useApi } from '../hooks';
 
@@ -111,6 +111,14 @@ const HomePage: React.FC = () => {
     navigate('/report');
   };
 
+  // Generate category options from enum
+  const getCategoryOptions = () => {
+    return Object.values(IssueCategory).map(category => ({
+      value: category,
+      label: category.charAt(0).toUpperCase() + category.slice(1).toLowerCase()
+    }));
+  };
+
   return (
     <Layout>
       <Container maxWidth="xl" sx={{ py: 4 }}>
@@ -164,11 +172,9 @@ const HomePage: React.FC = () => {
                 label="Category"
               >
                 <MenuItem value="all">All Categories</MenuItem>
-                <MenuItem value="roads">Roads</MenuItem>
-                <MenuItem value="utilities">Utilities</MenuItem>
-                <MenuItem value="parks">Parks</MenuItem>
-                <MenuItem value="safety">Safety</MenuItem>
-                <MenuItem value="other">Other</MenuItem>
+                {getCategoryOptions().map(({ value, label }) => (
+                  <MenuItem key={value} value={value}>{label}</MenuItem>
+                ))}
               </Select>
             </FormControl>
             <Button
@@ -291,6 +297,34 @@ const HomePage: React.FC = () => {
                 Create Account
               </Button>
             </Box>
+          </Paper>
+        )}
+        
+        {isAuthenticated && filteredIssues?.length === 0 && !loading && !error && (
+          <Paper 
+            elevation={3} 
+            sx={{ 
+              mt: 4, 
+              p: 3, 
+              borderRadius: 2,
+              backgroundColor: 'rgba(76, 175, 80, 0.1)',
+              border: '1px solid rgba(76, 175, 80, 0.3)'
+            }}
+          >
+            <Typography variant="h6" gutterBottom>
+              No issues found in your area
+            </Typography>
+            <Typography variant="body1" paragraph>
+              Be the first to report a civic issue in your community and help make a difference.
+            </Typography>
+            <Button 
+              variant="contained" 
+              color="success" 
+              startIcon={<AddIcon />}
+              onClick={handleReportIssue}
+            >
+              Report an Issue
+            </Button>
           </Paper>
         )}
       </Container>

@@ -23,8 +23,9 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ onLocationSelect, initi
           setUserLocation([latitude, longitude]);
           
           if (!initialLocation) {
-            setLocation({ latitude, longitude });
-            onLocationSelect({ latitude, longitude });
+            const loc = { latitude, longitude };
+            setLocation(loc);
+            onLocationSelect(loc);
             // Reverse geocode to get address
             fetchAddress(latitude, longitude);
           }
@@ -43,12 +44,16 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ onLocationSelect, initi
       // In a real app, you would use a geocoding service like Google Maps or Nominatim
       // For this example, we'll simulate a delay and set a placeholder address
       await new Promise(resolve => setTimeout(resolve, 1000));
-      setAddress(`${latitude.toFixed(6)}, ${longitude.toFixed(6)}`);
+      const resolvedAddress = `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
+      setAddress(resolvedAddress);
+      // Also propagate address to parent once available
+      onLocationSelect({ latitude, longitude, address: resolvedAddress });
       
       // In a real implementation, you would do something like:
       // const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
       // const data = await response.json();
       // setAddress(data.display_name);
+      // onLocationSelect({ latitude, longitude, address: data.display_name });
     } catch (error) {
       console.error('Error fetching address:', error);
       setAddress('Address not found');
@@ -66,8 +71,9 @@ const LocationPicker: React.FC<LocationPickerProps> = ({ onLocationSelect, initi
   const handleUseCurrentLocation = () => {
     if (userLocation) {
       const [latitude, longitude] = userLocation;
-      setLocation({ latitude, longitude });
-      onLocationSelect({ latitude, longitude });
+      const loc = { latitude, longitude };
+      setLocation(loc);
+      onLocationSelect(loc);
       fetchAddress(latitude, longitude);
     }
   };

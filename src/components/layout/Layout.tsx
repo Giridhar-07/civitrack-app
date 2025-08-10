@@ -89,8 +89,13 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     const fetchUser = async () => {
       try {
         if (authService.isAuthenticated()) {
+          console.log('Layout: Token found, fetching user data');
           const userData = await authService.getCurrentUser();
+          console.log('Layout: User data fetched successfully:', userData);
           setUser(userData);
+        } else {
+          console.log('Layout: No token found, user is not authenticated');
+          setUser(null);
         }
       } catch (error: any) {
         console.error('Failed to fetch user:', error);
@@ -103,7 +108,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         
         if (!isNetworkError) {
           // If token is invalid, clear it
+          console.log('Layout: Non-network error, logging out user');
           authService.logout();
+          setUser(null);
           // Don't show notification for auth errors, as they're expected when token is invalid
         } else {
           // Show a user-friendly message for network errors
@@ -119,6 +126,20 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     };
 
     fetchUser();
+    
+    // Add event listener for storage changes to detect login/logout in other tabs
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'token') {
+        console.log('Layout: Token changed in storage, refreshing user data');
+        fetchUser();
+      }
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+    };
   }, [showNotification]);
 
   const handleLogout = () => {

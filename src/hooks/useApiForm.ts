@@ -56,15 +56,15 @@ const useApiForm = <T extends Record<string, any>, R = any>(
   // Handle form input changes
   const handleChange = useCallback(
     (field: keyof T, value: any) => {
-      setState(prev => ({
-        ...prev,
-        data: { ...prev.data, [field]: value },
-        // Clear field error when field is changed
-        fieldErrors: {
-          ...prev.fieldErrors,
-          [field]: ''
-        }
-      }));
+      setState(prev => {
+        const { [field as unknown as string]: _cleared, ...rest } = prev.fieldErrors as Record<string, string>;
+        return {
+          ...prev,
+          data: { ...prev.data, [field]: value },
+          // Remove field from errors when it changes
+          fieldErrors: rest
+        };
+      });
     },
     []
   );

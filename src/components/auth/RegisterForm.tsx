@@ -105,7 +105,9 @@ const RegisterForm: React.FC = () => {
 
     try {
       await authService.register(formData);
-      navigate('/');
+      // Force a full page reload to ensure all components update with the new auth state
+      // This is more reliable than just navigating
+      window.location.href = '/';
     } catch (err: any) {
       console.error('Registration failed:', err);
       
@@ -113,7 +115,7 @@ const RegisterForm: React.FC = () => {
       let errorMessage = 'Registration failed. Please try again.';
       
       // Handle timeout errors specifically
-      if (err.code === 'ECONNABORTED' || (err.message && err.message.includes('timeout'))) {
+      if (err.code === 'ECONNABORTED' || err.errorCode === 'NETWORK_ERROR' || err.errorCode === 'TIMEOUT_ERROR' || (err.message && err.message.includes('timeout'))) {
         errorMessage = 'The server is taking too long to respond. Please check your internet connection and try again.';
       } else if (err.response?.data) {
         const responseData = err.response.data;

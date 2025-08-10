@@ -30,10 +30,9 @@ const LoginForm: React.FC = () => {
       const response = await authService.login(credentials);
       console.log('Login successful, navigating to home page');
       
-      // Add a small delay before navigation to ensure token is stored
-      setTimeout(() => {
-        navigate('/');
-      }, 100);
+      // Force a full page reload to ensure all components update with the new auth state
+      // This is more reliable than just navigating
+      window.location.href = '/';
       
       return response;
     } catch (err: any) {
@@ -46,9 +45,12 @@ const LoginForm: React.FC = () => {
       if (err.errorCode === 'NETWORK_ERROR' || err.errorCode === 'TIMEOUT_ERROR') {
         // Handle network errors
         errorMessage = err.message || 'Network connection issue. Please check your internet connection and try again.';
-      } else if (err.statusCode === 401) {
-        // Handle authentication errors
+      } else if (err.response?.status === 401 || err.statusCode === 401 || err.status === 401) {
+        // Handle authentication errors - check response.status, statusCode and status properties
         errorMessage = 'Invalid email or password. Please try again.';
+      } else if (err.response?.data?.message) {
+        // Use server error message if available
+        errorMessage = err.response.data.message;
       } else if (err.message) {
         // Use the error message if available
         errorMessage = err.message;

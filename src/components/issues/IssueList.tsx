@@ -76,31 +76,32 @@ const IssueList: React.FC<IssueListProps> = ({
       endIndex: lastItemIndex 
     } 
   } = usePagination({
-    initialPage: 1,
+    initialPage: 0,
     initialPageSize: 9,
     totalItems: filteredIssues.length
   });
 
   // Get current page of issues
-  const currentIssues = filteredIssues.slice(firstItemIndex, lastItemIndex + 1);
+  const currentIssues = filteredIssues.slice(firstItemIndex, lastItemIndex);
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFilter('searchTerm', e.target.value);
-    setPage(1); // Reset to first page when search changes
+    setPage(0); // Reset to first page when search changes
   };
 
   const handleStatusFilterChange = (e: SelectChangeEvent<string>) => {
     setFilter('status', e.target.value);
-    setPage(1);
+    setPage(0);
   };
 
   const handleCategoryFilterChange = (e: SelectChangeEvent<string>) => {
     setFilter('category', e.target.value);
-    setPage(1);
+    setPage(0);
   };
 
   const handlePageChange = (event: React.ChangeEvent<unknown>, value: number) => {
-    setPage(value);
+    // MUI Pagination is 1-based; convert to 0-based for hook
+    setPage(value - 1);
   };
 
   const isIssueSelected = (issue: Issue): boolean => {
@@ -163,7 +164,7 @@ const IssueList: React.FC<IssueListProps> = ({
                 <MenuItem value="">All Statuses</MenuItem>
                 {Object.values(IssueStatus).map((status) => (
                   <MenuItem key={status} value={status}>
-                    {status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' ')}
+                    {status && typeof status === 'string' ? status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' ') : 'Unknown'}
                   </MenuItem>
                 ))}
               </Select>
@@ -193,7 +194,7 @@ const IssueList: React.FC<IssueListProps> = ({
                 <MenuItem value="">All Categories</MenuItem>
                 {Object.values(IssueCategory).map((category) => (
                   <MenuItem key={category} value={category}>
-                    {category.charAt(0).toUpperCase() + category.slice(1)}
+                    {category && typeof category === 'string' ? category.charAt(0).toUpperCase() + category.slice(1).replace('_', ' ') : 'Unknown'}
                   </MenuItem>
                 ))}
               </Select>
@@ -237,7 +238,7 @@ const IssueList: React.FC<IssueListProps> = ({
             <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
               <Pagination 
                 count={totalPages} 
-                page={page} 
+                page={page + 1} 
                 onChange={handlePageChange} 
                 color="primary" 
                 shape="rounded"

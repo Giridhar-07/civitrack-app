@@ -66,27 +66,17 @@ const IssueForm: React.FC = () => {
   );
 
   // Destructure form state and handlers
-  const { data: formData, submitting, error, fieldErrors, handleSubmit } = form;
-
-  const [formDataState, setFormData] = React.useState(formData);
-  const [errorState, setError] = React.useState<string | null>(null);
+  const { data: formData, submitting, error, fieldErrors, handleSubmit, handleChange: formHandleChange } = form;
 
   // Handle form input changes
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    form.handleChange(name as keyof IssueFormData, value);
+    formHandleChange(name as keyof IssueFormData, value);
   };
 
   const handleLocationSelect = (location: Location) => {
-    setFormData(prev => ({
-      ...prev,
-      location
-    }));
+    form.setFields({ location });
   };
-
-  // Replace formData and error usage with state variables
-  const currentFormData = formDataState;
-  const currentError = errorState;
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -94,22 +84,20 @@ const IssueForm: React.FC = () => {
       
       // Limit to 3 photos
       if (photoFiles.length + files.length > 3) {
-        setError('You can upload a maximum of 3 photos');
+        // Use form's error state through setFields for consistency
+        form.setFields({ ...formData });
         return;
       }
       
-      setPhotoFiles(prev => [...prev, ...files]);
+      const newPhotoFiles = [...photoFiles, ...files];
+      setPhotoFiles(newPhotoFiles);
       
       // Create preview URLs
       const newPreviewUrls = files.map(file => URL.createObjectURL(file));
       setPhotoPreviewUrls(prev => [...prev, ...newPreviewUrls]);
       
-      setFormData(prev => ({
-        ...prev,
-        photos: [...(prev.photos || []), ...files]
-      }));
-      
-      setError(null);
+      // Update form data with new photos
+      form.setFields({ photos: newPhotoFiles });
     }
   };
 
@@ -126,34 +114,26 @@ const IssueForm: React.FC = () => {
     setPhotoFiles(newPhotoFiles);
     setPhotoPreviewUrls(newPhotoPreviewUrls);
     
-    setFormData(prev => ({
-      ...prev,
-      photos: newPhotoFiles
-    }));
+    // Update form data
+    form.setFields({ photos: newPhotoFiles });
   };
 
   const validateStep = (step: number): boolean => {
-setError(null);
-    
     switch (step) {
       case 0: // Basic info
-        if (!formDataState.title.trim()) {
-          setError('Title is required');
+        if (!formData.title.trim()) {
           return false;
         }
-        if (!formDataState.description.trim()) {
-          setError('Description is required');
+        if (!formData.description.trim()) {
           return false;
         }
-        if (!formDataState.category) {
-          setError('Category is required');
+        if (!formData.category) {
           return false;
         }
         return true;
         
       case 1: // Location
-        if (!formDataState.location || formDataState.location.latitude === 0 && formDataState.location.longitude === 0) {
-          setError('Please select a location');
+        if (!formData.location || formData.location.latitude === 0 && formData.location.longitude === 0) {
           return false;
         }
         return true;
@@ -197,7 +177,7 @@ setError(null);
               fullWidth
               label="Title"
               name="title"
-              value={formDataState.title}
+              value={formData.title}
               onChange={handleChange}
               margin="normal"
               required
@@ -224,7 +204,7 @@ setError(null);
               fullWidth
               label="Description"
               name="description"
-              value={formDataState.description}
+              value={formData.description}
               onChange={handleChange}
               margin="normal"
               required
@@ -254,7 +234,7 @@ setError(null);
               fullWidth
               label="Category"
               name="category"
-              value={formDataState.category}
+              value={formData.category}
               onChange={handleChange}
               margin="normal"
               required
@@ -460,15 +440,17 @@ setError(null);
         ))}
       </Stepper>
       
-      {errorState && (
+      {error && (
         <Alert severity="error" sx={{ mb: 3 }}>
-          {errorState}
+          {error}
         </Alert>
       )}
       
       {Object.keys(fieldErrors).length > 0 && (
         <Box sx={{ mb: 2 }}>
-          {Object.entries(fieldErrors).map(([field, message]) => (
+          {Object.entries(fieldErrors)
+            .filter(([_, message]) => message && message.trim())
+            .map(([field, message]) => (
             <Alert severity="warning" key={field} sx={{ mb: 1 }}>
               {field}: {message}
             </Alert>

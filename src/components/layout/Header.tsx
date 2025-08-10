@@ -273,7 +273,7 @@ const Header: React.FC<HeaderProps> = ({ user, onLogout }) => {
                 color="inherit"
               >
                 <Avatar sx={{ width: 32, height: 32, bgcolor: '#4CAF50' }}>
-                  {user.username.charAt(0).toUpperCase()}
+                  {(user?.username?.[0] ?? user?.name?.[0] ?? '?').toUpperCase()}
                 </Avatar>
               </IconButton>
             </Box>
