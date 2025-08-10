@@ -1,4 +1,4 @@
-import jwt from 'jsonwebtoken';
+import jwt, { SignOptions } from 'jsonwebtoken';
 import { Request, Response, NextFunction } from 'express';
 import User from '../models/User';
 
@@ -19,9 +19,10 @@ export const generateToken = (user: User): string => {
     role: user.role,
   };
 
-  return jwt.sign(payload, JWT_SECRET, {
-    expiresIn: JWT_EXPIRES_IN,
-  });
+   const signOptions: SignOptions = {
+    expiresIn: JWT_EXPIRES_IN as any,
+  };
+  return jwt.sign(payload, JWT_SECRET as jwt.Secret, signOptions);
 };
 
 // Verify JWT token

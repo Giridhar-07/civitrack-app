@@ -132,7 +132,7 @@ Issue.init(
 );
 
 // Define associations
-Issue.belongsTo(User, { foreignKey: 'reportedBy', as: 'reporter' });
+Issue.belongsTo(User, { foreignKey: 'reportedBy', as: 'user' });
 Issue.belongsTo(Location, { foreignKey: 'locationId', as: 'location' });
 
 export default Issue;

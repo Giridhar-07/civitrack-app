@@ -32,9 +32,9 @@ export const createIssue = async (req: Request, res: Response): Promise<Response
       description,
       category: category || IssueCategory.OTHER,
       status: IssueStatus.REPORTED,
-      userId: user.id,
+      reportedBy: user.id,
       locationId: location.id,
-      images: req.files ? (req.files as Express.Multer.File[]).map(file => file.filename) : []
+      photos: req.files ? (req.files as Express.Multer.File[]).map(file => file.filename) : []
     });
 
     // Create initial status log
@@ -83,7 +83,7 @@ export const getIssues = async (req: Request, res: Response): Promise<Response> 
     
     // Filter by user if provided
     if (req.query.userId) {
-      whereConditions.userId = req.query.userId;
+      whereConditions.reportedBy = req.query.userId;
     }
     
     // Search by title or description
@@ -174,7 +174,7 @@ export const getNearbyIssues = async (req: Request, res: Response): Promise<Resp
         { model: User, as: 'user', attributes: ['id', 'username', 'name'] },
         { model: Location, as: 'location' }
       ],
-      order: [['createdAt', 'DESC']]
+      order: [['reportedAt', 'DESC']]
     });
     
     return successResponse(res, issues, 'Nearby issues retrieved successfully');
@@ -245,10 +245,22 @@ export const updateIssue = async (req: Request, res: Response): Promise<Response
       
       // Check if user is authorized to update this issue
       // Only the issue creator or an admin can update it
-      if (issue.userId !== user.id && user.role !== 'admin') {
+      if (issue.reportedBy !== user.id && user.role !== 'admin') {
         await transaction.rollback();
         return badRequestResponse(res, 'You are not authorized to update this issue');
       }
+
+      // Update issue
+      await issue.update({
+        title: title || issue.title,
+        description: description || issue.description,
+        category: category || issue.category,
+        status: status || issue.status,
+        // If new images are uploaded, append them to existing ones
+        photos: req.files ? 
+          [...issue.photos, ...(req.files as Express.Multer.File[]).map(file => file.filename)] : 
+          issue.photos
+      }, { transaction });
       
       // If status is being updated, create a status log
       if (status && status !== issue.status) {
@@ -273,18 +285,6 @@ export const updateIssue = async (req: Request, res: Response): Promise<Response
           }, { transaction });
         }
       }
-      
-      // Update issue
-      await issue.update({
-        title: title || issue.title,
-        description: description || issue.description,
-        category: category || issue.category,
-        status: status || issue.status,
-        // If new images are uploaded, append them to existing ones
-        images: req.files ? 
-          [...issue.images, ...(req.files as Express.Multer.File[]).map(file => file.filename)] : 
-          issue.images
-      }, { transaction });
       
       // Commit transaction
       await transaction.commit();
@@ -330,7 +330,7 @@ export const deleteIssue = async (req: Request, res: Response): Promise<Response
     
     // Check if user is authorized to delete this issue
     // Only the issue creator or an admin can delete it
-    if (issue.userId !== user.id && user.role !== 'admin') {
+    if (issue.reportedBy !== user.id && user.role !== 'admin') {
       return badRequestResponse(res, 'You are not authorized to delete this issue');
     }
     
@@ -433,11 +433,11 @@ export const getUserIssues = async (req: Request, res: Response): Promise<Respon
     
     // Get user's issues with pagination
     const { count, rows: issues } = await Issue.findAndCountAll({
-      where: { userId: user.id },
+      where: { reportedBy: user.id },
       include: [
         { model: Location, as: 'location' }
       ],
-      order: [['createdAt', 'DESC']],
+      order: [['reportedAt', 'DESC']],
       limit,
       offset
     });
@@ -499,18 +499,18 @@ export const getIssueStatistics = async (req: Request, res: Response): Promise<R
           attributes: ['id', 'username', 'name']
         }
       ],
-      order: [['createdAt', 'DESC']],
+      order: [['reportedAt', 'DESC']],
       limit: 10
     });
     
     // Format the statistics
     const statistics = {
-      byStatus: statusCounts.reduce((acc, curr) => {
-        acc[curr.status] = parseInt(curr.getDataValue('count') as string);
+      byStatus: statusCounts.reduce((acc, curr: any) => {
+        acc[curr.status] = parseInt(curr.get('count').toString());
         return acc;
       }, {} as Record<string, number>),
-      byCategory: categoryCounts.reduce((acc, curr) => {
-        acc[curr.category] = parseInt(curr.getDataValue('count') as string);
+      byCategory: categoryCounts.reduce((acc, curr: any) => {
+        acc[curr.category] = parseInt(curr.get('count').toString());
         return acc;
       }, {} as Record<string, number>),
       recentActivity

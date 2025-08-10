@@ -74,8 +74,8 @@ const seedDatabase = async () => {
       description: 'Large pothole causing traffic and potential damage to vehicles.',
       category: IssueCategory.ROAD,
       status: IssueStatus.REPORTED,
-      images: [],
-      userId: user1.id,
+      photos: [],
+      reportedBy: user1.id,
       locationId: location1.id
     });
     
@@ -85,8 +85,8 @@ const seedDatabase = async () => {
       description: 'Street light has been out for over a week, creating safety concerns at night.',
       category: IssueCategory.ELECTRICITY,
       status: IssueStatus.UNDER_REVIEW,
-      images: [],
-      userId: user2.id,
+      photos: [],
+      reportedBy: user2.id,
       locationId: location2.id
     });
     
@@ -96,8 +96,8 @@ const seedDatabase = async () => {
       description: 'Public trash bin has not been emptied and is overflowing onto the sidewalk.',
       category: IssueCategory.WASTE,
       status: IssueStatus.IN_PROGRESS,
-      images: [],
-      userId: user1.id,
+      photos: [],
+      reportedBy: user1.id,
       locationId: location3.id
     });
     

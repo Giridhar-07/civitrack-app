@@ -8,12 +8,12 @@ import sequelize from '../config/database';
 // Define associations between models
 
 // User associations
-User.hasMany(Issue, { foreignKey: 'userId', as: 'issues' });
+User.hasMany(Issue, { foreignKey: 'reportedBy', as: 'issues' });
 User.hasMany(StatusLog, { foreignKey: 'userId', as: 'statusLogs' });
 User.hasMany(Flag, { foreignKey: 'userId', as: 'flags' });
 
 // Issue associations
-Issue.belongsTo(User, { foreignKey: 'userId', as: 'user' });
+Issue.belongsTo(User, { foreignKey: 'reportedBy', as: 'user' });
 Issue.belongsTo(Location, { foreignKey: 'locationId', as: 'location' });
 Issue.hasMany(StatusLog, { foreignKey: 'issueId', as: 'statusLogs' });
 Issue.hasMany(Flag, { foreignKey: 'issueId', as: 'flags' });
