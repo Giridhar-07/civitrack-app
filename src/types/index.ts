@@ -78,3 +78,25 @@ export interface IssueState {
   loading: boolean;
   error: string | null;
 }
+
+export type StatusRequestAction = 'approve' | 'reject';
+export type StatusRequestState = 'pending' | 'approved' | 'rejected';
+
+export interface StatusRequest {
+  id: string;
+  issueId: string;
+  requestedBy: string;
+  currentStatus: IssueStatus | string;
+  requestedStatus: IssueStatus | string;
+  reason?: string;
+  status: StatusRequestState;
+  reviewedBy?: string | null;
+  reviewedAt?: string | Date | null;
+  reviewComment?: string | null;
+  createdAt: string | Date;
+  updatedAt: string | Date;
+  // Optional expanded relations
+  issue?: any;
+  requester?: any;
+  reviewer?: any;
+}
