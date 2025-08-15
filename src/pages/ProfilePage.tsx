@@ -14,14 +14,23 @@ import {
   Alert,
   Card,
   CardContent,
-  useTheme
+  useTheme,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  IconButton,
+  Snackbar
 } from '@mui/material';
 import {
   Person as PersonIcon,
   Edit as EditIcon,
   Logout as LogoutIcon,
   History as HistoryIcon,
-  Bookmark as BookmarkIcon
+  Bookmark as BookmarkIcon,
+  Close as CloseIcon,
+  Save as SaveIcon
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import IssueList from '../components/issues/IssueList';
@@ -29,6 +38,7 @@ import Layout from '../components/layout/Layout';
 import { Issue, User } from '../types';
 import authService from '../services/authService';
 import issueService from '../services/issueService';
+import api from '../services/api';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -71,6 +81,20 @@ const ProfilePage: React.FC = () => {
   const [userIssues, setUserIssues] = useState<Issue[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // Edit profile state
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editFormData, setEditFormData] = useState({
+    name: '',
+    email: '',
+    username: ''
+  });
+  const [saving, setSaving] = useState(false);
+  const [snackbar, setSnackbar] = useState<{ open: boolean; message: string; severity: 'success' | 'error' }>({ 
+    open: false, 
+    message: '', 
+    severity: 'success' 
+  });
 
   useEffect(() => {
     const fetchUserData = async () => {
@@ -81,6 +105,15 @@ const ProfilePage: React.FC = () => {
         // Get current user
         const currentUser = await authService.getCurrentUser();
         setUser(currentUser);
+        
+        // Initialize edit form data
+        if (currentUser) {
+          setEditFormData({
+            name: currentUser.name || '',
+            email: currentUser.email || '',
+            username: currentUser.username || ''
+          });
+        }
         
         // Get user's issues
         if (currentUser && currentUser.id) {
@@ -109,6 +142,57 @@ const ProfilePage: React.FC = () => {
     } catch (error) {
       console.error('Error logging out:', error);
     }
+  };
+
+  const handleEditDialogOpen = () => {
+    if (user) {
+      setEditFormData({
+        name: user.name || '',
+        email: user.email || '',
+        username: user.username || ''
+      });
+    }
+    setEditDialogOpen(true);
+  };
+
+  const handleEditDialogClose = () => {
+    setEditDialogOpen(false);
+  };
+
+  const handleInputChange = (field: string) => (event: React.ChangeEvent<HTMLInputElement>) => {
+    setEditFormData(prev => ({
+      ...prev,
+      [field]: event.target.value
+    }));
+  };
+
+  const handleSaveProfile = async () => {
+    setSaving(true);
+    try {
+      const updatedUser = await api.put<User>('/auth/profile', editFormData);
+      
+      // Update local user state
+      setUser(updatedUser.data);
+      setEditDialogOpen(false);
+      setSnackbar({ 
+        open: true, 
+        message: 'Profile updated successfully!', 
+        severity: 'success' 
+      });
+    } catch (error: any) {
+      console.error('Error updating profile:', error);
+      setSnackbar({ 
+        open: true, 
+        message: error?.message || 'Failed to update profile. Please try again.', 
+        severity: 'error' 
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCloseSnackbar = () => {
+    setSnackbar({ ...snackbar, open: false });
   };
 
   if (loading) {
@@ -195,6 +279,7 @@ const ProfilePage: React.FC = () => {
                 variant="outlined"
                 fullWidth
                 startIcon={<EditIcon />}
+                onClick={handleEditDialogOpen}
                 sx={{ mb: 2 }}
               >
                 Edit Profile
@@ -301,6 +386,80 @@ const ProfilePage: React.FC = () => {
             </Paper>
           </Grid>
         </Grid>
+        
+        {/* Edit Profile Dialog */}
+        <Dialog 
+          open={editDialogOpen} 
+          onClose={handleEditDialogClose} 
+          maxWidth="sm" 
+          fullWidth
+        >
+          <DialogTitle>
+            Edit Profile
+            <IconButton
+              aria-label="close"
+              onClick={handleEditDialogClose}
+              sx={{ position: 'absolute', right: 8, top: 8 }}
+            >
+              <CloseIcon />
+            </IconButton>
+          </DialogTitle>
+          <DialogContent>
+            <TextField
+              fullWidth
+              label="Name"
+              value={editFormData.name}
+              onChange={handleInputChange('name')}
+              margin="normal"
+              required
+            />
+            <TextField
+              fullWidth
+              label="Email"
+              type="email"
+              value={editFormData.email}
+              onChange={handleInputChange('email')}
+              margin="normal"
+              required
+            />
+            <TextField
+              fullWidth
+              label="Username"
+              value={editFormData.username}
+              onChange={handleInputChange('username')}
+              margin="normal"
+              required
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleEditDialogClose}>Cancel</Button>
+            <Button 
+              onClick={handleSaveProfile} 
+              variant="contained" 
+              disabled={saving}
+              startIcon={saving ? <CircularProgress size={20} /> : <SaveIcon />}
+            >
+              {saving ? 'Saving...' : 'Save Changes'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+        
+        {/* Snackbar for notifications */}
+        <Snackbar 
+          open={snackbar.open} 
+          autoHideDuration={6000} 
+          onClose={handleCloseSnackbar}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        >
+          <Alert 
+            onClose={handleCloseSnackbar} 
+            severity={snackbar.severity} 
+            variant="filled"
+            sx={{ width: '100%' }}
+          >
+            {snackbar.message}
+          </Alert>
+        </Snackbar>
       </Container>
     </Layout>
   );

@@ -4,11 +4,14 @@ import { Container, Box, Alert, Snackbar } from '@mui/material';
 import IssueDetail from '../components/issues/IssueDetail';
 import { Issue, IssueStatus } from '../types';
 import issueService from '../services/issueService';
+import statusRequestService from '../services/statusRequestService';
 import Layout from '../components/layout/Layout';
+import { useAuth } from '../hooks/useAuth';
 
 const IssueDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
   
   const [issue, setIssue] = useState<Issue | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -32,10 +35,8 @@ const IssueDetailPage: React.FC = () => {
         const data = await issueService.getIssueById(id);
         setIssue(data);
         
-        // Check if user is admin (this would typically come from auth context)
-        // For demo purposes, we'll just set it to true if the user is logged in
-        const token = localStorage.getItem('token');
-        setIsAdmin(!!token); // Set to true if token exists
+        // Determine admin from auth context
+        setIsAdmin(user?.role === 'admin' || user?.isAdmin === true);
       } catch (err) {
         console.error('Error fetching issue:', err);
         setError('Failed to load issue details. Please try again later.');
@@ -45,29 +46,29 @@ const IssueDetailPage: React.FC = () => {
     };
 
     fetchIssue();
-  }, [id]);
+  }, [id, user]);
 
   const handleStatusUpdate = async (issueId: string, status: IssueStatus, comment: string) => {
     try {
       await issueService.updateIssueStatus(issueId, status, comment);
-      
-      // Refresh issue data
       const updatedIssue = await issueService.getIssueById(issueId);
       setIssue(updatedIssue);
-      
-      setSnackbar({
-        open: true,
-        message: 'Issue status updated successfully',
-        severity: 'success'
-      });
+      setSnackbar({ open: true, message: 'Issue status updated successfully', severity: 'success' });
     } catch (err) {
       console.error('Error updating issue status:', err);
-      setSnackbar({
-        open: true,
-        message: 'Failed to update issue status',
-        severity: 'error'
-      });
-      throw err; // Re-throw to be caught by the component
+      setSnackbar({ open: true, message: 'Failed to update issue status', severity: 'error' });
+      throw err;
+    }
+  };
+
+  const handleRequestStatusChange = async (issueId: string, requestedStatus: IssueStatus, reason?: string) => {
+    try {
+      await statusRequestService.requestStatusChange(issueId, requestedStatus, reason);
+      setSnackbar({ open: true, message: 'Status change request submitted for review', severity: 'success' });
+    } catch (err) {
+      console.error('Error requesting status change:', err);
+      setSnackbar({ open: true, message: 'Failed to submit status change request', severity: 'error' });
+      throw err;
     }
   };
 
@@ -105,6 +106,7 @@ const IssueDetailPage: React.FC = () => {
             error={error}
             onStatusUpdate={handleStatusUpdate}
             onFlagIssue={handleFlagIssue}
+            onRequestStatusChange={handleRequestStatusChange}
             isAdmin={isAdmin}
           />
         ) : (

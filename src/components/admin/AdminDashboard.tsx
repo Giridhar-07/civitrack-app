@@ -27,7 +27,8 @@ import {
   Card,
   CardContent,
   Divider,
-  Avatar
+  Avatar,
+  InputAdornment
 } from '@mui/material';
 import {
   Visibility as VisibilityIcon,
@@ -46,6 +47,10 @@ import { useNavigate } from 'react-router-dom';
 import { Issue, IssueStatus, IssueCategory, User } from '../../types';
 import issueService from '../../services/issueService';
 import { useApi, useFiltering, usePagination, useTheme, useNotification } from '../../hooks';
+// Add missing imports
+import statusRequestService from '../../services/statusRequestService';
+import { StatusRequest, StatusRequestAction, StatusRequestState } from '../../types';
+import { ChangeCircle as RequestIcon, Check as CheckIcon, Clear as RejectIcon } from '@mui/icons-material';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -95,6 +100,14 @@ const AdminDashboard: React.FC = () => {
     execute: fetchIssues
   } = useApi(issueService.getAllIssues);
   
+  // Status requests API call
+  const {
+    data: statusRequestsData,
+    loading: statusRequestsLoading,
+    error: statusRequestsError,
+    execute: fetchStatusRequests
+  } = useApi(statusRequestService.adminGetStatusRequests);
+  
   const [flaggedIssues, setFlaggedIssues] = useState<Issue[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   
@@ -124,6 +137,29 @@ const AdminDashboard: React.FC = () => {
       return matchesSearch && matchesStatus && matchesCategory;
     }
   });
+
+  // Status requests filtering
+  const {
+    filters: statusRequestFilters,
+    setFilter: setStatusRequestFilter,
+    filteredData: filteredStatusRequests
+  } = useFiltering({
+    data: statusRequestsData?.statusRequests ?? [],
+    initialFilters: {
+      searchTerm: '',
+      status: 'all'
+    },
+    filterFn: (request, filters) => {
+      const searchTermLower = filters.searchTerm ? String(filters.searchTerm).toLowerCase() : '';
+      const matchesSearch = !filters.searchTerm || 
+        (request.requestedBy && request.requestedBy.toLowerCase().includes(searchTermLower)) ||
+        (request.issue?.title && request.issue.title.toLowerCase().includes(searchTermLower));
+      
+      const matchesStatus = filters.status === 'all' || request.status === filters.status;
+      
+      return matchesSearch && matchesStatus;
+    }
+  });
   
   // Use our custom pagination hook
   const {
@@ -137,6 +173,18 @@ const AdminDashboard: React.FC = () => {
     initialPageSize: 10,
     totalItems: filteredIssues.length
   });
+
+  // Status requests pagination
+  const {
+    page: statusRequestsPage,
+    pageSize: statusRequestsRowsPerPage,
+    setPage: setStatusRequestsPage,
+    setPageSize: setStatusRequestsRowsPerPage
+  } = usePagination({
+    initialPage: 0,
+    initialPageSize: 10,
+    totalItems: filteredStatusRequests.length
+  });
   
   // Stats
   const [stats, setStats] = useState({
@@ -144,7 +192,8 @@ const AdminDashboard: React.FC = () => {
     resolvedIssues: 0,
     pendingIssues: 0,
     flaggedIssues: 0,
-    totalUsers: 0
+    totalUsers: 0,
+    pendingStatusRequests: 0
   });
 
   // Status update dialog
@@ -159,6 +208,13 @@ const AdminDashboard: React.FC = () => {
   const [issueToDelete, setIssueToDelete] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  // Status request review dialog
+  const [reviewDialogOpen, setReviewDialogOpen] = useState(false);
+  const [selectedStatusRequest, setSelectedStatusRequest] = useState<StatusRequest | null>(null);
+  const [reviewAction, setReviewAction] = useState<StatusRequestAction>('approve');
+  const [reviewComment, setReviewComment] = useState('');
+  const [reviewing, setReviewing] = useState(false);
+
   useEffect(() => {
     fetchDashboardData();
   }, []);
@@ -167,6 +223,9 @@ const AdminDashboard: React.FC = () => {
     try {
       // Fetch all issues
       await fetchIssues();
+      
+      // Fetch status requests
+      await fetchStatusRequests();
       
       // In a real app, you would have an admin service to get users
       // For demo purposes, we'll just create some mock users
@@ -195,6 +254,16 @@ const AdminDashboard: React.FC = () => {
     setPage(0);
   };
 
+  // Handlers for Status Requests pagination
+  const handleStatusRequestsChangePage = (event: unknown, newPage: number) => {
+    setStatusRequestsPage(newPage);
+  };
+
+  const handleStatusRequestsChangeRowsPerPage = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setStatusRequestsRowsPerPage(parseInt(event.target.value, 10));
+    setStatusRequestsPage(0);
+  };
+
   const handleStatusFilterChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setFilter('status', event.target.value);
     setPage(0);
@@ -208,6 +277,16 @@ const AdminDashboard: React.FC = () => {
   const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setFilter('searchTerm', event.target.value);
     setPage(0);
+  };
+
+  const handleStatusRequestSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setStatusRequestFilter('searchTerm', event.target.value);
+    setStatusRequestsPage(0);
+  };
+
+  const handleStatusRequestStatusFilterChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setStatusRequestFilter('status', event.target.value);
+    setStatusRequestsPage(0);
   };
 
   const handleViewIssue = (id: string) => {
@@ -234,6 +313,136 @@ const AdminDashboard: React.FC = () => {
     setDeleteDialogOpen(false);
     setIssueToDelete(null);
   };
+
+  const handleReviewStatusRequest = (request: StatusRequest, action: StatusRequestAction) => {
+    setSelectedStatusRequest(request);
+    setReviewAction(action);
+    setReviewComment('');
+    setReviewDialogOpen(true);
+  };
+
+  const handleReviewDialogClose = () => {
+    setReviewDialogOpen(false);
+    setSelectedStatusRequest(null);
+    setReviewComment('');
+  };
+
+  const handleSubmitReview = async () => {
+    if (!selectedStatusRequest) return;
+
+    setReviewing(true);
+    try {
+      await statusRequestService.adminReviewStatusRequest(
+        selectedStatusRequest.id,
+        reviewAction,
+        reviewComment
+      );
+
+      showSuccess(`Status request ${reviewAction}d successfully`);
+      
+      // Refresh status requests
+      await fetchStatusRequests();
+      
+      handleReviewDialogClose();
+    } catch (error) {
+      console.error('Failed to review status request:', error);
+      showError('Failed to review status request. Please try again.');
+    } finally {
+      setReviewing(false);
+    }
+  };
+
+  const updateStats = (updatedIssues: Issue[]) => {
+    const resolved = updatedIssues.filter(issue => issue.status === IssueStatus.RESOLVED).length;
+    const pending = updatedIssues.filter(issue => issue.status !== IssueStatus.RESOLVED && issue.status !== IssueStatus.CLOSED).length;
+    const flagged = updatedIssues.filter(issue => issue.flags && issue.flags.length > 0).length;
+    
+    setStats({
+      ...stats,
+      totalIssues: updatedIssues.length,
+      resolvedIssues: resolved,
+      pendingIssues: pending,
+      flaggedIssues: flagged
+    });
+  };
+
+  // Format date to a readable string
+  const formatDate = (date: string | Date): string => {
+    return new Date(date).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+  };
+
+  // Get color based on status
+  const getStatusColor = (status: IssueStatus): string => {
+    switch (status) {
+      case IssueStatus.REPORTED:
+        return '#f44336'; // Red
+      case IssueStatus.UNDER_REVIEW:
+        return '#ff9800'; // Orange
+      case IssueStatus.IN_PROGRESS:
+        return '#2196f3'; // Blue
+      case IssueStatus.RESOLVED:
+        return '#4caf50'; // Green
+      case IssueStatus.CLOSED:
+        return '#9e9e9e'; // Grey
+      default:
+        return '#f44336'; // Default to red
+    }
+  };
+
+  // Get color based on status request state
+  const getStatusRequestStateColor = (state: StatusRequestState): string => {
+    switch (state) {
+      case 'pending':
+        return '#ff9800'; // Orange
+      case 'approved':
+        return '#4caf50'; // Green
+      case 'rejected':
+        return '#f44336'; // Red
+      default:
+        return '#9e9e9e'; // Grey
+    }
+  };
+
+  // Calculate stats based on issues data
+  useEffect(() => {
+    if (issues && issues.length > 0) {
+      // Filter flagged issues
+      const flagged = issues.filter(issue => issue.flags && issue.flags.length > 0);
+      setFlaggedIssues(flagged);
+      
+      // Calculate stats
+      const resolved = issues.filter(issue => issue.status === IssueStatus.RESOLVED).length;
+      const pending = issues.filter(issue => 
+        issue.status !== IssueStatus.RESOLVED && issue.status !== IssueStatus.CLOSED
+      ).length;
+      
+      const pendingStatusRequests = statusRequestsData?.statusRequests?.filter(
+        request => request.status === 'pending'
+      ).length || 0;
+      
+      setStats({
+        totalIssues: issues.length,
+        resolvedIssues: resolved,
+        pendingIssues: pending,
+        flaggedIssues: flagged.length,
+        totalUsers: users.length,
+        pendingStatusRequests
+      });
+    }
+  }, [issues, users, statusRequestsData]);
+
+  // Get paginated issues
+  const paginatedIssues = filteredIssues.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
+
+  // Get paginated status requests
+  const paginatedStatusRequests = filteredStatusRequests.slice(
+    statusRequestsPage * statusRequestsRowsPerPage, 
+    statusRequestsPage * statusRequestsRowsPerPage + statusRequestsRowsPerPage
+  );
 
   const handleStatusUpdate = async () => {
     if (!selectedIssue || !newStatus) return;
@@ -282,7 +491,7 @@ const AdminDashboard: React.FC = () => {
       
       // Remove from issues list
       const updatedIssues = issues?.filter(issue => issue.id !== issueToDelete) ?? [];
-await fetchIssues(); // Refetch issues from API after deletion
+      await fetchIssues(); // Refetch issues from API after deletion
       
       // Remove from flagged issues if present
       const updatedFlagged = flaggedIssues.filter(issue => issue.id !== issueToDelete);
@@ -299,73 +508,6 @@ await fetchIssues(); // Refetch issues from API after deletion
       setDeleting(false);
     }
   };
-
-  const updateStats = (updatedIssues: Issue[]) => {
-    const resolved = updatedIssues.filter(issue => issue.status === IssueStatus.RESOLVED).length;
-    const pending = updatedIssues.filter(issue => issue.status !== IssueStatus.RESOLVED && issue.status !== IssueStatus.CLOSED).length;
-    const flagged = updatedIssues.filter(issue => issue.flags && issue.flags.length > 0).length;
-    
-    setStats({
-      ...stats,
-      totalIssues: updatedIssues.length,
-      resolvedIssues: resolved,
-      pendingIssues: pending,
-      flaggedIssues: flagged
-    });
-  };
-
-  // Format date to a readable string
-  const formatDate = (date: Date): string => {
-    return new Date(date).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
-  };
-
-  // Get color based on status
-  const getStatusColor = (status: IssueStatus): string => {
-    switch (status) {
-      case IssueStatus.REPORTED:
-        return '#f44336'; // Red
-      case IssueStatus.UNDER_REVIEW:
-        return '#ff9800'; // Orange
-      case IssueStatus.IN_PROGRESS:
-        return '#2196f3'; // Blue
-      case IssueStatus.RESOLVED:
-        return '#4caf50'; // Green
-      case IssueStatus.CLOSED:
-        return '#9e9e9e'; // Grey
-      default:
-        return '#f44336'; // Default to red
-    }
-  };
-
-  // Calculate stats based on issues data
-  useEffect(() => {
-    if (issues && issues.length > 0) {
-      // Filter flagged issues
-      const flagged = issues.filter(issue => issue.flags && issue.flags.length > 0);
-      setFlaggedIssues(flagged);
-      
-      // Calculate stats
-      const resolved = issues.filter(issue => issue.status === IssueStatus.RESOLVED).length;
-      const pending = issues.filter(issue => 
-        issue.status !== IssueStatus.RESOLVED && issue.status !== IssueStatus.CLOSED
-      ).length;
-      
-      setStats({
-        totalIssues: issues.length,
-        resolvedIssues: resolved,
-        pendingIssues: pending,
-        flaggedIssues: flagged.length,
-        totalUsers: users.length
-      });
-    }
-  }, [issues, users]);
-
-  // Get paginated issues
-  const paginatedIssues = filteredIssues.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
 
   if (loading) {
     return (
@@ -453,6 +595,22 @@ await fetchIssues(); // Refetch issues from API after deletion
               </CardContent>
             </Card>
           </Grid>
+          
+          <Grid item xs={12} sm={6} md={3}>
+            <Card sx={{ backgroundColor: '#9c27b0', color: '#fff' }}>
+              <CardContent>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="h6" component="div">
+                    Requests
+                  </Typography>
+                  <RequestIcon fontSize="large" />
+                </Box>
+                <Typography variant="h3" component="div" sx={{ mt: 2 }}>
+                  {stats.pendingStatusRequests}
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
         </Grid>
       </Box>
       
@@ -486,7 +644,23 @@ await fetchIssues(); // Refetch issues from API after deletion
             )} 
             {...a11yProps(1)} 
           />
-          <Tab label="User Management" {...a11yProps(2)} />
+          <Tab 
+            label={(
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <span>Status Requests</span>
+                {stats.pendingStatusRequests > 0 && (
+                  <Chip 
+                    label={stats.pendingStatusRequests} 
+                    size="small" 
+                    color="warning" 
+                    sx={{ ml: 1, height: 20, minWidth: 20 }} 
+                  />
+                )}
+              </Box>
+            )} 
+            {...a11yProps(2)} 
+          />
+          <Tab label="User Management" {...a11yProps(3)} />
         </Tabs>
       </Box>
       
@@ -500,7 +674,11 @@ await fetchIssues(); // Refetch issues from API after deletion
             value={filters.searchTerm}
             onChange={handleSearchChange}
             InputProps={{
-              startAdornment: <SearchIcon fontSize="small" sx={{ mr: 1, color: 'text.secondary' }} />,
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon fontSize="small" sx={{ color: 'text.secondary' }} />
+                </InputAdornment>
+              ),
             }}
             sx={{ flexGrow: 1 }}
           />
@@ -725,8 +903,179 @@ await fetchIssues(); // Refetch issues from API after deletion
         )}
       </TabPanel>
       
-      {/* User Management Tab */}
+      {/* Status Requests Tab */}
       <TabPanel value={tabValue} index={2}>
+        <Box sx={{ mb: 3, display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 2 }}>
+          <TextField
+            label="Search Requests"
+            variant="outlined"
+            size="small"
+            value={statusRequestFilters.searchTerm}
+            onChange={handleStatusRequestSearchChange}
+            placeholder="Search by requester or issue title..."
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <SearchIcon fontSize="small" sx={{ color: 'text.secondary' }} />
+                </InputAdornment>
+              ),
+            }}
+            sx={{ flexGrow: 1 }}
+          />
+          
+          <TextField
+            select
+            label="Status"
+            value={statusRequestFilters.status}
+            onChange={handleStatusRequestStatusFilterChange}
+            variant="outlined"
+            size="small"
+            sx={{ minWidth: 150 }}
+            InputProps={{
+              startAdornment: <FilterIcon fontSize="small" sx={{ mr: 1, color: 'text.secondary' }} />,
+            }}
+          >
+            <MenuItem value="all">All Statuses</MenuItem>
+            <MenuItem value="pending">Pending</MenuItem>
+            <MenuItem value="approved">Approved</MenuItem>
+            <MenuItem value="rejected">Rejected</MenuItem>
+          </TextField>
+        </Box>
+
+        {statusRequestsLoading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+            <CircularProgress />
+          </Box>
+        ) : statusRequestsError ? (
+          <Alert severity="error" sx={{ mb: 3 }}>
+            Failed to load status requests. Please try again later.
+          </Alert>
+        ) : paginatedStatusRequests.length > 0 ? (
+          <>
+            <TableContainer component={Paper} sx={{ backgroundColor: '#1e1e1e' }}>
+              <Table sx={{ minWidth: 650 }} aria-label="status requests table">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Issue</TableCell>
+                    <TableCell>Requested By</TableCell>
+                    <TableCell>Current Status</TableCell>
+                    <TableCell>Requested Status</TableCell>
+                    <TableCell>Reason</TableCell>
+                    <TableCell>Status</TableCell>
+                    <TableCell>Date</TableCell>
+                    <TableCell align="right">Actions</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {paginatedStatusRequests.map((request) => (
+                    <TableRow key={request.id}>
+                      <TableCell component="th" scope="row">
+                        <Typography variant="body2" sx={{ fontWeight: 'medium' }}>
+                          {request.issue?.title || `Issue #${request.issueId}`}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>{request.requestedBy}</TableCell>
+                      <TableCell>
+                        <Chip 
+                          label={request.currentStatus} 
+                          size="small"
+                          sx={{ 
+                            backgroundColor: getStatusColor(request.currentStatus as IssueStatus),
+                            color: '#fff',
+                          }} 
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Chip 
+                          label={request.requestedStatus} 
+                          size="small"
+                          sx={{ 
+                            backgroundColor: getStatusColor(request.requestedStatus as IssueStatus),
+                            color: '#fff',
+                          }} 
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2" sx={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {request.reason || 'No reason provided'}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Chip 
+                          label={request.status} 
+                          size="small"
+                          sx={{ 
+                            backgroundColor: getStatusRequestStateColor(request.status),
+                            color: '#fff',
+                          }} 
+                        />
+                      </TableCell>
+                      <TableCell>{formatDate(request.createdAt)}</TableCell>
+                      <TableCell align="right">
+                        <IconButton 
+                          aria-label="view issue"
+                          onClick={() => handleViewIssue(request.issueId)}
+                          size="small"
+                        >
+                          <VisibilityIcon fontSize="small" />
+                        </IconButton>
+                        {request.status === 'pending' && (
+                          <>
+                            <IconButton 
+                              aria-label="approve"
+                              onClick={() => handleReviewStatusRequest(request, 'approve')}
+                              size="small"
+                              color="success"
+                            >
+                              <CheckIcon fontSize="small" />
+                            </IconButton>
+                            <IconButton 
+                              aria-label="reject"
+                              onClick={() => handleReviewStatusRequest(request, 'reject')}
+                              size="small"
+                              color="error"
+                            >
+                              <RejectIcon fontSize="small" />
+                            </IconButton>
+                          </>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+            
+            <TablePagination
+              rowsPerPageOptions={[5, 10, 25]}
+              component="div"
+              count={filteredStatusRequests.length}
+              rowsPerPage={statusRequestsRowsPerPage}
+              page={statusRequestsPage}
+              onPageChange={handleStatusRequestsChangePage}
+              onRowsPerPageChange={handleStatusRequestsChangeRowsPerPage}
+              sx={{ 
+                color: '#fff',
+                '.MuiTablePagination-selectIcon': {
+                  color: '#aaa',
+                },
+              }}
+            />
+          </>
+        ) : (
+          <Box sx={{ textAlign: 'center', py: 4 }}>
+            <Typography variant="h6" gutterBottom>
+              No Status Requests
+            </Typography>
+            <Typography variant="body1" color="text.secondary">
+              There are currently no status change requests from users.
+            </Typography>
+          </Box>
+        )}
+      </TabPanel>
+      
+      {/* User Management Tab */}
+      <TabPanel value={tabValue} index={3}>
         <TableContainer component={Paper} sx={{ backgroundColor: '#1e1e1e' }}>
           <Table sx={{ minWidth: 650 }} aria-label="users table">
             <TableHead>
@@ -843,6 +1192,85 @@ await fetchIssues(); // Refetch issues from API after deletion
             }}
           >
             {updating ? <CircularProgress size={24} /> : 'Update Status'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Status Request Review Dialog */}
+      <Dialog open={reviewDialogOpen} onClose={handleReviewDialogClose} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          {reviewAction === 'approve' ? 'Approve' : 'Reject'} Status Request
+          <IconButton
+            aria-label="close"
+            onClick={handleReviewDialogClose}
+            sx={{ position: 'absolute', right: 8, top: 8 }}
+          >
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent>
+          {selectedStatusRequest && (
+            <>
+              <Typography variant="subtitle1" gutterBottom>
+                Issue: {selectedStatusRequest.issue?.title || `Issue #${selectedStatusRequest.issueId}`}
+              </Typography>
+              <Typography variant="body2" color="text.secondary" gutterBottom>
+                Requested by: {selectedStatusRequest.requestedBy}
+              </Typography>
+              <Divider sx={{ my: 2 }} />
+              
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="body2" gutterBottom>
+                  Status Change Request:
+                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
+                  <Chip 
+                    label={selectedStatusRequest.currentStatus} 
+                    size="small"
+                    sx={{ 
+                      backgroundColor: getStatusColor(selectedStatusRequest.currentStatus as IssueStatus),
+                      color: '#fff',
+                    }} 
+                  />
+                  <Typography>→</Typography>
+                  <Chip 
+                    label={selectedStatusRequest.requestedStatus} 
+                    size="small"
+                    sx={{ 
+                      backgroundColor: getStatusColor(selectedStatusRequest.requestedStatus as IssueStatus),
+                      color: '#fff',
+                    }} 
+                  />
+                </Box>
+                {selectedStatusRequest.reason && (
+                  <Typography variant="body2" color="text.secondary">
+                    Reason: {selectedStatusRequest.reason}
+                  </Typography>
+                )}
+              </Box>
+              
+              <TextField
+                fullWidth
+                label={`${reviewAction === 'approve' ? 'Approval' : 'Rejection'} Comment (Optional)`}
+                value={reviewComment}
+                onChange={(e) => setReviewComment(e.target.value)}
+                margin="normal"
+                multiline
+                rows={3}
+                placeholder={`Add a comment explaining your ${reviewAction} decision`}
+              />
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleReviewDialogClose}>Cancel</Button>
+          <Button 
+            onClick={handleSubmitReview} 
+            variant="contained" 
+            disabled={reviewing}
+            color={reviewAction === 'approve' ? 'success' : 'error'}
+          >
+            {reviewing ? <CircularProgress size={24} /> : (reviewAction === 'approve' ? 'Approve' : 'Reject')}
           </Button>
         </DialogActions>
       </Dialog>

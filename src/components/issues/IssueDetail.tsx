@@ -42,6 +42,7 @@ interface IssueDetailProps {
   error: string | null;
   onStatusUpdate?: (id: string, status: IssueStatus, comment: string) => Promise<void>;
   onFlagIssue?: (id: string, reason: string) => Promise<void>;
+  onRequestStatusChange?: (id: string, requestedStatus: IssueStatus, reason?: string) => Promise<void>;
   isAdmin?: boolean;
 }
 
@@ -51,6 +52,7 @@ const IssueDetail: React.FC<IssueDetailProps> = ({
   error, 
   onStatusUpdate, 
   onFlagIssue,
+  onRequestStatusChange,
   isAdmin = false
 }) => {
   const navigate = useNavigate();
@@ -66,6 +68,12 @@ const IssueDetail: React.FC<IssueDetailProps> = ({
   const [flagging, setFlagging] = useState(false);
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
   const [photoDialogOpen, setPhotoDialogOpen] = useState(false);
+
+  // New state for status request flow
+  const [requestDialogOpen, setRequestDialogOpen] = useState(false);
+  const [requestedStatus, setRequestedStatus] = useState<IssueStatus>(issue.status);
+  const [requestReason, setRequestReason] = useState('');
+  const [requesting, setRequesting] = useState(false);
 
   // Format date to a readable string
   const formatDate = (date: Date): string => {
@@ -109,6 +117,30 @@ const IssueDetail: React.FC<IssueDetailProps> = ({
   const handleFlagDialogOpen = () => {
     setFlagReason('');
     setFlagDialogOpen(true);
+  };
+
+  // New handlers for status request
+  const handleRequestDialogOpen = () => {
+    setRequestedStatus(issue.status);
+    setRequestReason('');
+    setRequestDialogOpen(true);
+  };
+
+  const handleRequestDialogClose = () => {
+    setRequestDialogOpen(false);
+  };
+
+  const handleSubmitStatusRequest = async () => {
+    if (!onRequestStatusChange) return;
+    setRequesting(true);
+    try {
+      await onRequestStatusChange(issue.id, requestedStatus, requestReason);
+      handleRequestDialogClose();
+    } catch (error) {
+      console.error('Failed to submit status change request:', error);
+    } finally {
+      setRequesting(false);
+    }
   };
 
   const handleFlagDialogClose = () => {
@@ -254,15 +286,27 @@ const IssueDetail: React.FC<IssueDetailProps> = ({
               )}
               
               {!isAdmin && (
-                <Button
-                  variant="outlined"
-                  onClick={handleFlagDialogOpen}
-                  startIcon={<FlagIcon />}
-                  color="error"
-                  sx={{ mt: 2 }}
-                >
-                  Flag Issue
-                </Button>
+                <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
+                  <Button
+                    variant="contained"
+                    onClick={handleRequestDialogOpen}
+                    startIcon={<EditIcon />}
+                    sx={{
+                      backgroundColor: '#1976d2',
+                      '&:hover': { backgroundColor: '#115293' }
+                    }}
+                  >
+                    Request Status Change
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    onClick={handleFlagDialogOpen}
+                    startIcon={<FlagIcon />}
+                    color="error"
+                  >
+                    Flag Issue
+                  </Button>
+                </Box>
               )}
             </Box>
             
@@ -409,6 +453,62 @@ const IssueDetail: React.FC<IssueDetailProps> = ({
             }}
           >
             {updating ? <CircularProgress size={24} /> : 'Update Status'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+      
+      {/* Request Status Change Dialog */}
+      <Dialog open={requestDialogOpen} onClose={handleRequestDialogClose} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          Request Status Change
+          <IconButton
+            aria-label="close"
+            onClick={handleRequestDialogClose}
+            sx={{ position: 'absolute', right: 8, top: 8 }}
+          >
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent>
+          <TextField
+            select
+            fullWidth
+            label="Requested Status"
+            value={requestedStatus}
+            onChange={(e) => setRequestedStatus(e.target.value as IssueStatus)}
+            margin="normal"
+            sx={{ mb: 3 }}
+          >
+            {Object.values(IssueStatus).map((status) => (
+              <MenuItem key={status} value={status}>
+                {status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' ')}
+              </MenuItem>
+            ))}
+          </TextField>
+
+          <TextField
+            fullWidth
+            label="Reason (Optional)"
+            value={requestReason}
+            onChange={(e) => setRequestReason(e.target.value)}
+            margin="normal"
+            multiline
+            rows={4}
+            placeholder="Explain why this status should be changed"
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleRequestDialogClose}>Cancel</Button>
+          <Button 
+            onClick={handleSubmitStatusRequest} 
+            variant="contained" 
+            disabled={requesting || requestedStatus === issue.status}
+            sx={{ 
+              backgroundColor: '#1976d2',
+              '&:hover': { backgroundColor: '#115293' }
+            }}
+          >
+            {requesting ? <CircularProgress size={24} /> : 'Submit Request'}
           </Button>
         </DialogActions>
       </Dialog>
